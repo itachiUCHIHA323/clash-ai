@@ -45,12 +45,20 @@ Unlike board games (Chess, Go) or games with official AI APIs (StarCraft II via 
 When building an AI for Clash of Clans, trying to train an RL agent from scratch without a baseline is inefficient. We structure learning into **3 progressive phases**:
 
 ### Phase 1: Predetermined Scripted Deployment (Rule-Based Baseline)
-Before training neural networks, use **`src/agent/scripted_agent.py`** to test your emulator input bridge and establish a baseline win-rate.
+Before training neural networks, use **`src/agent/predetermined_agent.py`** (or **`src/agent/scripted_agent.py`**) to test your emulator input bridge and establish a baseline win-rate.
 - **Why start here?** It validates sub-millisecond tap actuation (`FastController`) and UI state monitoring (`FastUIReader`) without waiting for model training.
-- **Included Strategies**:
-  - `BARCH_WAVE`: Deploys a sweeping line of Barbarians to absorb defense fire, followed 1 second later by a wave of Archers behind them.
-  - `GIANT_WIZARD_FUNNEL`: Deploys 3 tanking Giants at a central focal point and flanking Wizards on the corners to clear outside buildings (funneling).
-  - `SURROUND_SPAM`: Deploys units in a 360-degree ring around the entire perimeter of the base.
+- **Specialized Attack Logic (`PredeterminedAttacker`)**:
+  - `SURROUND_ATTACK` (for **Sneaky Goblins** or **Valkyries**): Deploys troops evenly across **all 4 sides** of the base perimeter (`TOP_LEFT`, `TOP_RIGHT`, `BOTTOM_RIGHT`, `BOTTOM_LEFT`), and deploys **4 Heroes with ONE Hero on EACH side** (King on Top-Left, Queen on Top-Right, Warden on Bottom-Right, Royal Champion on Bottom-Left).
+  - `LINE_SWEEP_ATTACK` (for **Dragons** or **Electro Dragons / E-Drags**): Deploys all dragons along **any single selected side**, and deploys **all 4 Heroes alongside the dragons on that exact same side** to push together.
+
+### How Deployment Card Recognition Works (`CardScanner`)
+To select cards dynamically from the deployment bar without hardcoding slots:
+1. **OpenCV Template Matching (Optional Icon Scans)**: The bot uses **`src/vision/card_scanner.py`** to scan the bottom deployment bar against small card icons (`SNEAKY_GOBLIN`, `VALKYRIE`, `DRAGON`, `EDRAGON`, `KING`, `QUEEN`, `WARDEN`, `CHAMPION`).
+2. **Zero-Vision Slot Order Fallback**: If card template PNGs aren't captured yet, the scanner automatically falls back to your 1-indexed army slot order (e.g., Slot 1 = E-Drags, Slot 2 = King, Slot 3 = Queen, etc.), calculating exact screen $(X, Y)$ taps automatically!
+
+### What Images / Assets Do You Need?
+- **Do we need images for the 4 sides of the base?** **No!** A Clash of Clans battle map is an invariant isometric diamond. The 4 perimeter edges (`TOP_LEFT`, `TOP_RIGHT`, `BOTTOM_RIGHT`, `BOTTOM_LEFT`) are mapped geometrically in normalized coordinates (`0.0 - 1.0`) inside `PredeterminedAttacker`.
+- **Do we need images for Attack / End Battle buttons?** Only small button templates (`templates/ui/attack_btn.png`, `end_battle_btn.png`) or fixed screen UI percentages if automating the full lobby search loop.
 
 ### Phase 2: Behavioral Cloning (Imitation Learning Bootstrap)
 Instead of letting an RL agent drop spells randomly on empty grass:
@@ -100,11 +108,13 @@ clash-ai/
 │   │   ├── fast_controller.py # Ultra-low latency mss window capture & pyautogui taps (~3ms)
 │   │   └── adb_controller.py  # Standard ADB emulator screen capture & tap fallback
 │   ├── vision/
+│   │   ├── card_scanner.py    # Deployment bar card recognition (Templates + Slot Order fallback)
 │   │   ├── fast_ocr.py        # Sub-millisecond ROI template matching & HSV star detector
 │   │   └── detector.py        # YOLOv8 + OpenCV perception pipeline
 │   ├── env/
 │   │   └── clash_env.py       # Custom Gymnasium environment (ClashOfClansEnv)
 │   └── agent/
+│       ├── predetermined_agent.py # Surround (Valk/Sneaky Gob) & Line Sweep (Drag/E-Drag) + 4 Heroes
 │       ├── scripted_agent.py  # Phase 1: Predetermined rule-based strategies (BARCH, Funnel, Surround)
 │       ├── train_ppo.py       # Training script using Stable-Baselines3 PPO
 │       └── random_agent.py    # Baseline agent testing random deployment
@@ -131,13 +141,13 @@ adb devices
 python -m src.vision.detector
 ```
 
-### 4. Run a Baseline Scripted or Random Agent
+### 4. Run a Baseline Predetermined or Scripted Agent
 ```bash
+# Test Sneaky Goblin / Valkyrie 4-side surround or E-Dragon line sweep + 4 Heroes
+python -m src.agent.predetermined_agent
+
 # Test predetermined BARCH Wave or Giant+Wizard funneling strategy
 python -m src.agent.scripted_agent
-
-# Test random deployment baseline
-python -m src.agent.random_agent
 ```
 
 ### 5. Train the PPO Attacking Agent
