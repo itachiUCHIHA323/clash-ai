@@ -14,12 +14,12 @@ from src.agent.predetermined_agent import PredeterminedAttacker
 from src.vision.ui_matcher import UIMatcher
 
 
-def run_auto_lobby(adb_serial: str, troop_type: str, side: str, duration: int, use_adb: bool = True):
+def run_auto_lobby(adb_serial: str, troop_type: str, side: str, duration: int, use_adb: bool = True, adb_path: Optional[str] = None):
     """
     Automates the full lobby-to-battle loop using attack.png, find.PNG, etc.
     """
     print("[AUTO-LOBBY] Initializing UIMatcher and Predetermined Attacker...")
-    attacker = PredeterminedAttacker(use_fast_pipeline=not use_adb, device_serial=adb_serial)
+    attacker = PredeterminedAttacker(use_fast_pipeline=not use_adb, device_serial=adb_serial, adb_path=adb_path)
     ui_matcher = UIMatcher()
 
     # Step 1: Look for Home Village Attack Button
@@ -64,25 +64,27 @@ def run_auto_lobby(adb_serial: str, troop_type: str, side: str, duration: int, u
     return result
 
 
-def run_tests(adb_serial: str, mode: str, troop_type: str, side: str, duration: int, use_adb: bool = False):
+def run_tests(adb_serial: str, mode: str, troop_type: str, side: str, duration: int, use_adb: bool = False, adb_path: Optional[str] = None):
     print("=====================================================================")
     print("      CLASH-AI BLUESTACKS 5 (BST 5) TEST & LAUNCHER SYSTEM           ")
     print("=====================================================================")
     print(f"  Target Device/IP  : {adb_serial}")
     print(f"  Execution Mode    : {mode.upper()}")
     print(f"  Input Controller  : {'ADB Socket (127.0.0.1:5555)' if use_adb else 'Fast Window Capture / Click'}")
+    if adb_path:
+        print(f"  Custom ADB Path   : {adb_path}")
     print("=====================================================================\n")
 
     if mode == "calibrate":
         print_coordinate_tables(1280, 720)
-        success, frame, w, h = check_adb_connection(adb_serial)
+        success, frame, w, h = check_adb_connection(adb_serial, adb_path=adb_path)
         generate_calibration_overlay(frame)
         print("\n[INFO] Calibration complete. Check 'debug_calibration_1280x720.png' to view tap overlays.")
         return
 
     if mode == "test-connection":
         print("[INFO] Running connection & screen capture test...")
-        success, frame, w, h = check_adb_connection(adb_serial)
+        success, frame, w, h = check_adb_connection(adb_serial, adb_path=adb_path)
         if success:
             print("[SUCCESS] BlueStacks 5 is connected and responding to screen capture & input commands!")
         else:
@@ -99,11 +101,13 @@ def run_tests(adb_serial: str, mode: str, troop_type: str, side: str, duration: 
                     side=side,
                     duration=duration,
                     use_adb=use_adb,
+                    adb_path=adb_path,
                 )
             else:
                 attacker = PredeterminedAttacker(
                     use_fast_pipeline=not use_adb,
                     device_serial=adb_serial,
+                    adb_path=adb_path,
                 )
                 result = attacker.auto_attack(
                     troop_type=troop_type,
@@ -142,6 +146,12 @@ if __name__ == "__main__":
         help="BlueStacks ADB serial number / localhost IP (default: 127.0.0.1:5555)",
     )
     parser.add_argument(
+        "--adb-path",
+        type=str,
+        default=None,
+        help="Custom path to adb.exe or HD-Adb.exe (e.g., 'C:\\Program Files\\BlueStacks_nxt\\HD-Adb.exe')",
+    )
+    parser.add_argument(
         "--troop",
         type=str,
         default="EDRAGON",
@@ -175,4 +185,5 @@ if __name__ == "__main__":
         side=args.side,
         duration=args.duration,
         use_adb=args.use_adb,
+        adb_path=args.adb_path,
     )

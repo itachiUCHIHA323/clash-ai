@@ -23,13 +23,13 @@ class PredeterminedAttacker:
     Executes predetermined troop and hero deployments based on army type and base geometry.
     """
 
-    def __init__(self, use_fast_pipeline: bool = True, device_serial: Optional[str] = None):
+    def __init__(self, use_fast_pipeline: bool = True, device_serial: Optional[str] = None, adb_path: Optional[str] = None):
         self.use_fast_pipeline = use_fast_pipeline
         if self.use_fast_pipeline:
             self.controller = FastController()
             self.ui_reader = FastUIReader()
         else:
-            self.controller = ADBController(device_serial=device_serial)
+            self.controller = ADBController(device_serial=device_serial, adb_path=adb_path)
             self.ui_reader = FastUIReader()
 
         self.card_scanner = CardScanner()

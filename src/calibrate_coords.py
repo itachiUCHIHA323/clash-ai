@@ -68,12 +68,12 @@ def print_coordinate_tables(width: int = 1280, height: int = 720) -> None:
     print("=====================================================================\n")
 
 
-def check_adb_connection(adb_serial: str) -> Tuple[bool, np.ndarray, int, int]:
+def check_adb_connection(adb_serial: str, adb_path: Optional[str] = None) -> Tuple[bool, np.ndarray, int, int]:
     """
     Test ADB connection to BlueStacks 5 and return status, screenshot frame, width, and height.
     """
     print(f"[INFO] Testing ADB connection to BlueStacks 5 at '{adb_serial}'...")
-    adb = ADBController(device_serial=adb_serial)
+    adb = ADBController(device_serial=adb_serial, adb_path=adb_path)
 
     # Test resolution query
     w, h = adb.get_screen_resolution()
@@ -154,13 +154,14 @@ def generate_calibration_overlay(frame: np.ndarray, save_path: str = "debug_cali
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Calibrate 1280x720 Coordinates & Test BlueStacks ADB")
     parser.add_argument("--adb-serial", type=str, default="127.0.0.1:5555", help="ADB Serial/IP for BlueStacks 5 (default: 127.0.0.1:5555)")
+    parser.add_argument("--adb-path", type=str, default=None, help="Custom path to adb.exe or HD-Adb.exe")
     args = parser.parse_args()
 
     # 1. Print Coordinate Table
     print_coordinate_tables(1280, 720)
 
     # 2. Check BlueStacks ADB Connection
-    success, frame, w, h = check_adb_connection(args.adb_serial)
+    success, frame, w, h = check_adb_connection(args.adb_serial, args.adb_path)
 
     # 3. Generate Debug Image
     generate_calibration_overlay(frame)

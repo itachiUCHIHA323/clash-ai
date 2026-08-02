@@ -49,6 +49,16 @@ python -m src.test_bot --mode test-connection --adb-serial 127.0.0.1:5555
 ```
 This tests your ADB socket connection, verifies `1280x720` resolution, and confirms live screenshot capture.
 
+> [!TIP]
+> **Getting `[WinError 2] The system cannot find the file specified` on Windows?**
+> This means `adb.exe` is not in your Windows PATH.
+> - **We added Automatic Discovery**: Our code now automatically looks for `C:\Program Files\BlueStacks_nxt\HD-Adb.exe`!
+> - **If BlueStacks is on a different drive/folder**, pass `--adb-path` directly:
+>   ```bash
+>   python -m src.test_bot --mode test-connection --adb-serial 127.0.0.1:5555 --adb-path "C:\Program Files\BlueStacks_nxt\HD-Adb.exe"
+>   ```
+> - **To permanently add ADB to Windows**: Open *System Properties* $\rightarrow$ *Environment Variables* $\rightarrow$ Edit `Path` $\rightarrow$ Add `C:\Program Files\BlueStacks_nxt\`.
+
 ### 2. Print 1280x720 Coordinate Table & Generate Calibration Overlay
 To inspect exact pixel `(X, Y)` tap locations for all 8 card slots and the 4 base sides:
 ```bash
