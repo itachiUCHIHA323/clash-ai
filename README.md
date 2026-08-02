@@ -28,9 +28,10 @@ Unlike board games (Chess, Go) or games with official AI APIs (StarCraft II via 
      | & Destruction OCR           | (X, Y, Timestamp)
 +-------------------------------------------------------------+
 |       2. Computer Vision & Perception (Screen -> State)     |
-|   (YOLOv8/YOLOv11 Object Detection + OpenCV + OCR)          |
+|   (YOLOv8/YOLOv11 + Fast ROI Color/Template UI Matching)    |
 +-------------------------------------------------------------+
-     ^ Raw Frame Image (RGB)       | ADB / Input Commands
+     ^ Raw Frame Image (RGB)       | Direct Click / Tap Events
+     | (mss Window Grab ~2ms)      | (pyautogui / socket ~1ms)
 +-------------------------------------------------------------+
 |              1. Game Execution / Emulator                   |
 |   (Android Emulator: Waydroid, BlueStacks, or Device via ADB)|
@@ -72,9 +73,11 @@ clash-ai/
 ├── requirements.txt           # Python dependencies
 ├── src/
 │   ├── controller/
-│   │   └── adb_controller.py  # ADB emulator screen capture & tap input bridge
+│   │   ├── fast_controller.py # Ultra-low latency mss window capture & pyautogui taps (~3ms)
+│   │   └── adb_controller.py  # Standard ADB emulator screen capture & tap fallback
 │   ├── vision/
-│   │   └── detector.py        # YOLOv8 + OpenCV perception & OCR pipeline
+│   │   ├── fast_ocr.py        # Sub-millisecond ROI template matching & HSV star detector
+│   │   └── detector.py        # YOLOv8 + OpenCV perception pipeline
 │   ├── env/
 │   │   └── clash_env.py       # Custom Gymnasium environment (ClashOfClansEnv)
 │   └── agent/
