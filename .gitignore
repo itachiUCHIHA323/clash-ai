@@ -1,0 +1,23 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Model checkpoints and logs
+models/
+tensorboard_logs/
+*.zip
+*.pt
+*.pth
+*.onnx
+
+# IDEs / OS
+.vscode/
+.idea/
+.DS_Store

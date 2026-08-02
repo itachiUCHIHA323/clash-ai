@@ -1,0 +1,11 @@
+gymnasium>=0.29.0
+stable-baselines3>=2.2.0
+torch>=2.0.0
+torchvision>=0.15.0
+opencv-python>=4.8.0
+numpy>=1.24.0
+ultralytics>=8.0.0
+pytesseract>=0.3.10
+pure-python-adb>=0.3.0
+pyautogui>=0.9.54
+Pillow>=10.0.0
