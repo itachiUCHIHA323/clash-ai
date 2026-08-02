@@ -38,9 +38,49 @@ Unlike board games (Chess, Go) or games with official AI APIs (StarCraft II via 
 +-------------------------------------------------------------+
 ```
 
----
+## 🎮 BlueStacks 5 (`127.0.0.1:5555`) Calibration & Testing Guide
 
-## 🗺️ The 3-Phase Training Roadmap (From Scripted Bot to Superhuman RL)
+If you are running **BlueStacks 5 (BST 5)** at **`1280x720`** resolution, we have included automated diagnostic and calibration tools:
+
+### 1. Check BlueStacks ADB Connection & Screen Capture
+Open BlueStacks Settings $\rightarrow$ Advanced $\rightarrow$ Enable **"Android Debug Bridge (ADB)"**, then run:
+```bash
+python -m src.test_bot --mode test-connection --adb-serial 127.0.0.1:5555
+```
+This tests your ADB socket connection, verifies `1280x720` resolution, and confirms live screenshot capture.
+
+### 2. Print 1280x720 Coordinate Table & Generate Calibration Overlay
+To inspect exact pixel `(X, Y)` tap locations for all 8 card slots and the 4 base sides:
+```bash
+python -m src.test_bot --mode calibrate --adb-serial 127.0.0.1:5555
+```
+This outputs a clean ASCII coordinate table and saves **`debug_calibration_1280x720.png`** showing every tap point overlayed on your screen.
+
+#### Exact 1280x720 Pixel Coordinate Reference Table:
+- **Deployment Card Slots (`Y = 655 px`)**:
+  - `Slot 1 (Troop)`: `X = 153`
+  - `Slot 2 (King)`: `X = 262`
+  - `Slot 3 (Queen)`: `X = 371`
+  - `Slot 4 (Warden)`: `X = 480`
+  - `Slot 5 (Royal Champ)`: `X = 588`
+  - `Slot 6-8 (Spells/Support)`: `X = 697, 806, 915`
+- **4 Base Perimeter Sides (`Start -> Midpoint (Hero Drop) -> End`)**:
+  - `TOP_LEFT` Side: `(230, 324) -> (390, 234) -> (550, 144)`
+  - `TOP_RIGHT` Side: `(730, 144) -> (890, 234) -> (1050, 324)`
+  - `BOTTOM_RIGHT` Side: `(1050, 396) -> (890, 486) -> (730, 576)`
+  - `BOTTOM_LEFT` Side: `(550, 576) -> (390, 486) -> (230, 396)`
+
+### 3. Launch an Attack on BlueStacks 5
+Run a predetermined attack directly from the command line:
+```bash
+# 1. Sneaky Goblin / Valkyrie Surround Attack across all 4 sides + 1 Hero per side:
+python -m src.test_bot --mode attack --troop SNEAKY_GOBLIN --adb-serial 127.0.0.1:5555
+
+# 2. Electro Dragon Line Sweep on BOTTOM_LEFT side + all 4 Heroes alongside:
+python -m src.test_bot --mode attack --troop EDRAGON --side BOTTOM_LEFT --adb-serial 127.0.0.1:5555
+```
+
+---
 
 When building an AI for Clash of Clans, trying to train an RL agent from scratch without a baseline is inefficient. We structure learning into **3 progressive phases**:
 
@@ -103,7 +143,10 @@ To prevent the agent from spending thousands of episodes dropping troops randoml
 clash-ai/
 ├── README.md                  # This document
 ├── requirements.txt           # Python dependencies
+├── templates/                 # Image template directories (cards & UI buttons)
 ├── src/
+│   ├── test_bot.py            # Master CLI runner for BlueStacks 5 testing, calibration & attacks
+│   ├── calibrate_coords.py    # 1280x720 coordinate table generator & debug overlay creator
 │   ├── controller/
 │   │   ├── fast_controller.py # Ultra-low latency mss window capture & pyautogui taps (~3ms)
 │   │   └── adb_controller.py  # Standard ADB emulator screen capture & tap fallback
