@@ -40,6 +40,30 @@ Unlike board games (Chess, Go) or games with official AI APIs (StarCraft II via 
 
 ---
 
+## 🗺️ The 3-Phase Training Roadmap (From Scripted Bot to Superhuman RL)
+
+When building an AI for Clash of Clans, trying to train an RL agent from scratch without a baseline is inefficient. We structure learning into **3 progressive phases**:
+
+### Phase 1: Predetermined Scripted Deployment (Rule-Based Baseline)
+Before training neural networks, use **`src/agent/scripted_agent.py`** to test your emulator input bridge and establish a baseline win-rate.
+- **Why start here?** It validates sub-millisecond tap actuation (`FastController`) and UI state monitoring (`FastUIReader`) without waiting for model training.
+- **Included Strategies**:
+  - `BARCH_WAVE`: Deploys a sweeping line of Barbarians to absorb defense fire, followed 1 second later by a wave of Archers behind them.
+  - `GIANT_WIZARD_FUNNEL`: Deploys 3 tanking Giants at a central focal point and flanking Wizards on the corners to clear outside buildings (funneling).
+  - `SURROUND_SPAM`: Deploys units in a 360-degree ring around the entire perimeter of the base.
+
+### Phase 2: Behavioral Cloning (Imitation Learning Bootstrap)
+Instead of letting an RL agent drop spells randomly on empty grass:
+1. Log coordinate tuples `(timestamp, card_idx, x, y)` from your Phase 1 scripted attacks (or human player replays).
+2. Train a supervised neural network to predict the next deployment action from the game screen.
+3. This bootstraps the policy network so it starts with intermediate tactical competence.
+
+### Phase 3: Proximal Policy Optimization (PPO Reinforcement Learning)
+Once initialized from Phase 1 & 2, the agent trains inside **`ClashOfClansEnv`** using Stable-Baselines3 PPO:
+- Through trial and error across thousands of automated attacks, the model optimizes spell timings, funneling angles, and hero ability activations to maximize 3-star win rates.
+
+---
+
 ## 🔬 Core Learning Methodologies
 
 ### 1. Proximal Policy Optimization (PPO) - Reinforcement Learning
@@ -81,6 +105,7 @@ clash-ai/
 │   ├── env/
 │   │   └── clash_env.py       # Custom Gymnasium environment (ClashOfClansEnv)
 │   └── agent/
+│       ├── scripted_agent.py  # Phase 1: Predetermined rule-based strategies (BARCH, Funnel, Surround)
 │       ├── train_ppo.py       # Training script using Stable-Baselines3 PPO
 │       └── random_agent.py    # Baseline agent testing random deployment
 ```
@@ -106,8 +131,12 @@ adb devices
 python -m src.vision.detector
 ```
 
-### 4. Run a Baseline Random Agent
+### 4. Run a Baseline Scripted or Random Agent
 ```bash
+# Test predetermined BARCH Wave or Giant+Wizard funneling strategy
+python -m src.agent.scripted_agent
+
+# Test random deployment baseline
 python -m src.agent.random_agent
 ```
 
