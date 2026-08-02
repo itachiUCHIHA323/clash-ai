@@ -73,10 +73,13 @@ This outputs a clean ASCII coordinate table and saves **`debug_calibration_1280x
 ### 3. Launch an Attack on BlueStacks 5
 Run a predetermined attack directly from the command line:
 ```bash
-# 1. Sneaky Goblin / Valkyrie Surround Attack across all 4 sides + 1 Hero per side:
+# 1. Automatic Lobby-to-Battle loop (uses attack.png, find.PNG, surrender.PNG):
+python -m src.test_bot --mode auto-lobby --troop EDRAGON --side BOTTOM_LEFT --adb-serial 127.0.0.1:5555
+
+# 2. Sneaky Goblin / Valkyrie Surround Attack across all 4 sides + 1 Hero per side:
 python -m src.test_bot --mode attack --troop SNEAKY_GOBLIN --adb-serial 127.0.0.1:5555
 
-# 2. Electro Dragon Line Sweep on BOTTOM_LEFT side + all 4 Heroes alongside:
+# 3. Electro Dragon Line Sweep on BOTTOM_LEFT side + all 4 Heroes alongside:
 python -m src.test_bot --mode attack --troop EDRAGON --side BOTTOM_LEFT --adb-serial 127.0.0.1:5555
 ```
 
@@ -151,6 +154,7 @@ clash-ai/
 │   │   ├── fast_controller.py # Ultra-low latency mss window capture & pyautogui taps (~3ms)
 │   │   └── adb_controller.py  # Standard ADB emulator screen capture & tap fallback
 │   ├── vision/
+│   │   ├── ui_matcher.py      # Auto-navigation using user's attack.png, find.PNG, surrender.PNG
 │   │   ├── card_scanner.py    # Deployment bar card recognition (Templates + Slot Order fallback)
 │   │   ├── fast_ocr.py        # Sub-millisecond ROI template matching & HSV star detector
 │   │   └── detector.py        # YOLOv8 + OpenCV perception pipeline

@@ -1,8 +1,9 @@
 """
-Master Test Runner for BlueStacks 5 (BST 5)
--------------------------------------------
+Master Test Runner & Auto-Lobby System for BlueStacks 5 (BST 5)
+---------------------------------------------------------------
 Easy command-line tool to test ADB connection to BlueStacks 5 (default: 127.0.0.1:5555),
-verify 1280x720 coordinates, check for errors, and launch predetermined attacks.
+verify 1280x720 coordinates, check for errors, navigate the lobby using your UI buttons,
+and launch predetermined attacks.
 """
 
 import argparse
@@ -10,6 +11,57 @@ import sys
 import time
 from src.calibrate_coords import print_coordinate_tables, check_adb_connection, generate_calibration_overlay
 from src.agent.predetermined_agent import PredeterminedAttacker
+from src.vision.ui_matcher import UIMatcher
+
+
+def run_auto_lobby(adb_serial: str, troop_type: str, side: str, duration: int, use_adb: bool = True):
+    """
+    Automates the full lobby-to-battle loop using attack.png, find.PNG, etc.
+    """
+    print("[AUTO-LOBBY] Initializing UIMatcher and Predetermined Attacker...")
+    attacker = PredeterminedAttacker(use_fast_pipeline=not use_adb, device_serial=adb_serial)
+    ui_matcher = UIMatcher()
+
+    # Step 1: Look for Home Village Attack Button
+    print("[AUTO-LOBBY] Searching for Home Village 'Attack' button (attack.png)...")
+    for _ in range(5):
+        frame = attacker.controller.get_screenshot() if use_adb else attacker.controller.get_screenshot_fast()
+        pos = ui_matcher.find_button(frame, "attack")
+        if pos:
+            print(f"[AUTO-LOBBY] Found 'Attack' button at {pos}. Tapping...")
+            attacker.tap_screen(pos[0], pos[1])
+            time.sleep(1.5)
+            break
+        time.sleep(1.0)
+    else:
+        print("[AUTO-LOBBY] Notice: 'Attack' button not found on current screen. Continuing search for 'Find a Match'...")
+
+    # Step 2: Look for 'Find a Match' or 'Attack Final' button
+    print("[AUTO-LOBBY] Searching for 'Find a Match' (find.PNG) or 'Attack Final' (attack_final.PNG)...")
+    for _ in range(5):
+        frame = attacker.controller.get_screenshot() if use_adb else attacker.controller.get_screenshot_fast()
+        pos_find = ui_matcher.find_button(frame, "find") or ui_matcher.find_button(frame, "attack_final")
+        if pos_find:
+            print(f"[AUTO-LOBBY] Found battle start button at {pos_find}. Tapping...")
+            attacker.tap_screen(pos_find[0], pos_find[1])
+            time.sleep(4.0)  # Wait for cloud search and enemy base to load
+            break
+        time.sleep(1.0)
+    else:
+        print("[AUTO-LOBBY] Notice: Could not find 'Find a Match' button. Assuming we are already in battle!")
+
+    # Step 3: Execute the Predetermined Attack
+    print(f"[AUTO-LOBBY] Starting battle deployment: {troop_type} (side: {side})...")
+    result = attacker.auto_attack(troop_type=troop_type, side=side, monitor_duration_sec=duration)
+
+    # Step 4: Check if 'Surrender / End Battle' button is visible at the end
+    frame_end = attacker.controller.get_screenshot() if use_adb else attacker.controller.get_screenshot_fast()
+    pos_surrender = ui_matcher.find_button(frame_end, "surrender")
+    if pos_surrender:
+        print(f"[AUTO-LOBBY] Battle ended or Surrender visible at {pos_surrender}. Tapping to return home...")
+        attacker.tap_screen(pos_surrender[0], pos_surrender[1])
+
+    return result
 
 
 def run_tests(adb_serial: str, mode: str, troop_type: str, side: str, duration: int, use_adb: bool = False):
@@ -38,20 +90,27 @@ def run_tests(adb_serial: str, mode: str, troop_type: str, side: str, duration: 
             print("  -> Try running: adb connect 127.0.0.1:5555")
         return
 
-    if mode == "attack":
-        print(f"[INFO] Initializing Predetermined Attacker for troop: '{troop_type}' on side: '{side}'...")
-        # If use_adb is True, pass use_fast_pipeline=False to use ADB over socket
-        attacker = PredeterminedAttacker(
-            use_fast_pipeline=not use_adb,
-            device_serial=adb_serial,
-        )
-
+    if mode in ["attack", "auto-lobby"]:
         try:
-            result = attacker.auto_attack(
-                troop_type=troop_type,
-                side=side,
-                monitor_duration_sec=duration,
-            )
+            if mode == "auto-lobby":
+                result = run_auto_lobby(
+                    adb_serial=adb_serial,
+                    troop_type=troop_type,
+                    side=side,
+                    duration=duration,
+                    use_adb=use_adb,
+                )
+            else:
+                attacker = PredeterminedAttacker(
+                    use_fast_pipeline=not use_adb,
+                    device_serial=adb_serial,
+                )
+                result = attacker.auto_attack(
+                    troop_type=troop_type,
+                    side=side,
+                    monitor_duration_sec=duration,
+                )
+
             print("\n=====================================================================")
             print("                       FINAL ATTACK RESULT                           ")
             print("=====================================================================")
@@ -73,8 +132,8 @@ if __name__ == "__main__":
         "--mode",
         type=str,
         default="test-connection",
-        choices=["test-connection", "calibrate", "attack"],
-        help="What to run: 'test-connection', 'calibrate', or 'attack'",
+        choices=["test-connection", "calibrate", "attack", "auto-lobby"],
+        help="What to run: 'test-connection', 'calibrate', 'attack', or 'auto-lobby'",
     )
     parser.add_argument(
         "--adb-serial",
