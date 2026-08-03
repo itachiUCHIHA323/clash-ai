@@ -27,6 +27,14 @@ try:
 except ImportError:
     PYTESSERACT_AVAILABLE = False
 
+# Try importing RapidOCR (ultra-fast ONNX runtime OCR)
+try:
+    from rapidocr_onnxruntime import RapidOCR
+    RAPIDOCR_AVAILABLE = True
+    RAPIDOCR_ENGINE = None
+except ImportError:
+    RAPIDOCR_AVAILABLE = False
+
 # Try importing EasyOCR
 try:
     import easyocr
@@ -218,8 +226,24 @@ class LootReader:
 
         candidates = []
 
-        # 1. Try Tesseract OCR across binarization modes
-        if PYTESSERACT_AVAILABLE:
+        # 1. Try RapidOCR (ONNX runtime - fastest and most accurate, no external exe required)
+        if RAPIDOCR_AVAILABLE:
+            global RAPIDOCR_ENGINE
+            try:
+                if RAPIDOCR_ENGINE is None:
+                    RAPIDOCR_ENGINE = RapidOCR()
+                for mode_name, th_img in [("Otsu", thresh_otsu), ("LowThresh", thresh_low), ("Adaptive", thresh_adapt)]:
+                    result, _ = RAPIDOCR_ENGINE(th_img)
+                    if result:
+                        for box, text, score in result:
+                            digits = re.sub(r"\D", "", text)
+                            if digits and len(digits) >= 4:
+                                candidates.append(int(digits))
+            except Exception as e:
+                print(f"[DEBUG] RapidOCR failed on {resource_name}: {e}")
+
+        # 2. Try Tesseract OCR across binarization modes if RapidOCR didn't find anything
+        if PYTESSERACT_AVAILABLE and not candidates:
             for mode_name, th_img in [("Otsu", thresh_otsu), ("LowThresh", thresh_low), ("Adaptive", thresh_adapt)]:
                 try:
                     text = pytesseract.image_to_string(th_img, config="--psm 7 -c tessedit_char_whitelist=0123456789")
@@ -230,7 +254,7 @@ class LootReader:
                 except Exception:
                     pass
 
-        # 2. Try EasyOCR if available and Tesseract found nothing
+        # 3. Try EasyOCR if available and previous engines found nothing
         if EASYOCR_AVAILABLE and not candidates:
             global EASYOCR_READER
             try:

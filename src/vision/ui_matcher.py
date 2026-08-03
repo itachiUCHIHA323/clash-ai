@@ -23,20 +23,38 @@ class UIMatcher:
         self._load_ui_templates()
 
     def _load_ui_templates(self) -> None:
-        """Load UI button images (attack.png, find.PNG, etc.)."""
-        target_names = ["attack", "find", "next", "attack_final", "return", "surrender"]
+        """Load UI button images (attack.png, find.PNG, confirm_attack.png, etc.)."""
+        # Canonical mappings from filenames to button types
+        filename_map = {
+            "attack": "attack",
+            "find": "find",
+            "find_match": "find",
+            "attack_final": "attack_final",
+            "confirm_attack": "attack_final",
+            "next": "next",
+            "return": "return",
+            "return_home": "return",
+            "surrender": "surrender",
+            "sur_end": "surrender",
+            "end_battle": "surrender",
+            "okay_sur": "dialog_ok",
+            "okay_back": "dialog_ok",
+            "okay_bonus": "dialog_ok",
+        }
 
         for search_dir in self.search_dirs:
             if not os.path.exists(search_dir):
                 continue
             for filename in os.listdir(search_dir):
                 name_lower = os.path.splitext(filename)[0].lower()
-                if name_lower in target_names and name_lower not in self.templates:
-                    filepath = os.path.join(search_dir, filename)
-                    img = cv2.imread(filepath, cv2.IMREAD_COLOR)
-                    if img is not None:
-                        self.templates[name_lower] = img
-                        print(f"[INFO] Loaded UI button template '{name_lower}' from '{filepath}' ({img.shape[1]}x{img.shape[0]})")
+                if name_lower in filename_map:
+                    canonical_name = filename_map[name_lower]
+                    if canonical_name not in self.templates:
+                        filepath = os.path.join(search_dir, filename)
+                        img = cv2.imread(filepath, cv2.IMREAD_COLOR)
+                        if img is not None:
+                            self.templates[canonical_name] = img
+                            print(f"[INFO] Loaded UI button template '{canonical_name}' from '{filepath}' ({img.shape[1]}x{img.shape[0]})")
 
     def find_button(self, frame: np.ndarray, button_name: str, threshold: float = 0.75) -> Optional[Tuple[int, int]]:
         """
