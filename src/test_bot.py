@@ -9,6 +9,7 @@ and launch predetermined attacks.
 import argparse
 import sys
 import time
+from typing import Optional, Dict, List, Tuple, Any
 from src.calibrate_coords import print_coordinate_tables, check_adb_connection, generate_calibration_overlay
 from src.agent.predetermined_agent import PredeterminedAttacker
 from src.vision.ui_matcher import UIMatcher
