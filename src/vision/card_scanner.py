@@ -61,6 +61,9 @@ class CardScanner:
         self.templates: Dict[str, np.ndarray] = {}
         self._load_templates()
 
+        self.count_digits: Dict[int, np.ndarray] = {}
+        self._load_count_digit_templates()
+
         self.default_slot_order = {
             "SNEAKY_GOBLIN": 1,
             "VALKYRIE": 1,
@@ -156,26 +159,95 @@ class CardScanner:
         card_y = int(h * 0.91)
         return (card_x, card_y)
 
+    def _load_count_digit_templates(self) -> None:
+        """Load digit templates 0..9 from 'templates/battleTroopCountFont' (from clash2)."""
+        for d in range(10):
+            for ext in [".png", ".bmp"]:
+                path = os.path.join("templates/battleTroopCountFont", f"{d}{ext}")
+                if os.path.exists(path):
+                    img = cv2.imread(path, cv2.IMREAD_COLOR)
+                    if img is not None:
+                        self.count_digits[d] = img
+                        break
+        if self.count_digits:
+            print(f"[INFO] Loaded {len(self.count_digits)} troop count badge digit templates from 'templates/battleTroopCountFont'")
+
+    def _match_count_digits(self, badge_crop: np.ndarray, threshold: float = 0.72) -> int:
+        """
+        Multi-scale template matching across 0..9 for the count badge above a deployment card.
+        """
+        if not self.count_digits or badge_crop.size == 0:
+            return 0
+
+        ch, cw, _ = badge_crop.shape
+        matches = []
+
+        for d, base_tmpl in self.count_digits.items():
+            for scale in [0.90, 0.95, 1.0, 1.05, 1.10]:
+                th, tw = int(base_tmpl.shape[0] * scale), int(base_tmpl.shape[1] * scale)
+                if tw > cw or th > ch or th < 5 or tw < 3:
+                    continue
+                tmpl = cv2.resize(base_tmpl, (tw, th), interpolation=cv2.INTER_LINEAR)
+
+                res = cv2.matchTemplate(badge_crop, tmpl, cv2.TM_CCOEFF_NORMED)
+                locs = np.where(res >= threshold)
+                for pt_y, pt_x in zip(*locs):
+                    conf = float(res[pt_y, pt_x])
+                    matches.append((int(pt_x), str(d), conf, tw))
+
+        if not matches:
+            return 0
+
+        matches.sort(key=lambda item: item[0])
+        filtered = []
+        for match in matches:
+            x, d, conf, tw = match
+            overlap = False
+            for prev in filtered:
+                prev_x, prev_d, prev_conf, prev_tw = prev
+                if abs(x - prev_x) < max(4, prev_tw // 2):
+                    overlap = True
+                    if conf > prev_conf:
+                        filtered.remove(prev)
+                        filtered.append(match)
+                    break
+            if not overlap:
+                filtered.append(match)
+
+        filtered.sort(key=lambda item: item[0])
+        digit_str = "".join([m[1] for m in filtered])
+        try:
+            return int(digit_str) if digit_str else 0
+        except ValueError:
+            return 0
+
     def read_troop_count(self, frame: np.ndarray, card_x: int, card_y: int, fallback_count: int = 24) -> int:
         """
-        Crop the count badge directly above the card icon (Y = card_y - 28 to card_y - 6,
-        X = card_x - 14 to card_x + 14) and read the exact integer count.
+        Crop the count badge directly above the card icon (Y = card_y - 30 to card_y - 6,
+        X = card_x - 16 to card_x + 16) and read the exact integer count using
+        clash2 battleTroopCountFont digit matching.
         """
         h, w, _ = frame.shape
-        y1 = max(0, card_y - 30)
-        y2 = max(0, card_y - 6)
-        x1 = max(0, card_x - 16)
-        x2 = min(w, card_x + 16)
+        y1 = max(0, card_y - 32)
+        y2 = max(0, card_y - 5)
+        x1 = max(0, card_x - 18)
+        x2 = min(w, card_x + 18)
 
         badge_crop = frame[y1:y2, x1:x2]
         if badge_crop.size == 0:
             return fallback_count
 
+        # 1. Primary Engine: clash2 battleTroopCountFont template matching
+        tmpl_count = self._match_count_digits(badge_crop)
+        if 1 <= tmpl_count <= 300:
+            print(f"[CARD SCAN] Read remaining count '{tmpl_count}' using battleTroopCountFont")
+            return tmpl_count
+
         gray = cv2.cvtColor(badge_crop, cv2.COLOR_BGR2GRAY)
         scaled = cv2.resize(gray, (0, 0), fx=3.0, fy=3.0, interpolation=cv2.INTER_LINEAR)
         _, thresh = cv2.threshold(scaled, 160, 255, cv2.THRESH_BINARY)
 
-        # 1. Try RapidOCR on count badge
+        # 2. Try RapidOCR on count badge
         if RAPIDOCR_AVAILABLE:
             global RAPIDOCR_ENGINE
             try:
@@ -190,7 +262,7 @@ class CardScanner:
             except Exception:
                 pass
 
-        # 2. Try Tesseract OCR on count badge
+        # 3. Try Tesseract OCR on count badge
         if PYTESSERACT_AVAILABLE:
             try:
                 text = pytesseract.image_to_string(thresh, config="--psm 7 -c tessedit_char_whitelist=0123456789")
@@ -199,13 +271,6 @@ class CardScanner:
                     return int(digits)
             except Exception:
                 pass
-
-        # 3. Connected-component count fallback
-        num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(thresh)
-        valid_blobs = [i for i in range(1, num_labels) if 6 <= stats[i, cv2.CC_STAT_HEIGHT] <= 35 and stats[i, cv2.CC_STAT_AREA] > 10]
-        if valid_blobs:
-            # If 2 digit blobs found and no OCR matched, estimate based on badge width
-            return fallback_count
 
         return fallback_count
 
