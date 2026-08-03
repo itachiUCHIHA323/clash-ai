@@ -51,8 +51,7 @@ python -m src.test_bot --mode test-connection
 
 > [!TIP]
 > **Getting `[WinError 2] The system cannot find the file specified` on Windows?**
-> This means `adb.exe` is not in your Windows PATH.
-> - **We added Automatic Discovery**: Our code automatically looks for `C:\Program Files\BlueStacks_nxt\HD-Adb.exe` and standard ADB paths!
+> - **We added Local `./adb.exe` & Automatic Discovery**: Our code automatically uses `./adb.exe` in the repository root directory or `C:\Program Files\BlueStacks_nxt\HD-Adb.exe`!
 > - **If BlueStacks or MuMu is in a custom drive/folder**, pass `--adb-path` directly:
 >   ```bash
 >   python -m src.test_bot --mode test-connection --adb-path "D:\MuMuPlayer-12.0\shell\adb.exe"
@@ -62,8 +61,13 @@ python -m src.test_bot --mode test-connection
 When inspecting an enemy base in scout mode, the Available Loot is located in the **UPPER-LEFT corner** (`Y = 10 to 250`, `X = 10 to 360` at 1280x720).
 - **Master Anchor (`avail_loot.PNG`)**: `LootReader` uses your uploaded **`avail_loot.PNG`** header banner to anchor the exact vertical rows for Gold, Elixir, and Dark Elixir below it.
 - **Dynamic Right-Side ROI Slicing**: Slices the digits immediately to the RIGHT of each row icon (`X = icon_x + 25` to `icon_x + 190`), so it never confuses available loot with your storage loot on the right side of the screen.
-- **Multi-Threshold Rapid Hybrid OCR (`rapidocr-onnxruntime`)**: Uses lightweight ONNX RapidOCR (or Tesseract / EasyOCR fallback) with Otsu thresholding and low-value binarization (`105`) so yellow Gold (`~150`) and magenta Elixir (`~115`) text is segmented with 100% accuracy in sub-10ms latency.
+- **Multi-Threshold Rapid Hybrid OCR (`rapidocr-onnxruntime`)**: Uses lightweight ONNX RapidOCR (with Tesseract / EasyOCR fallback) with Otsu thresholding and low-value binarization (`105`) so yellow Gold (`~150`) and magenta Elixir (`~115`) text is segmented with 100% accuracy in sub-10ms latency, saving debug slice images (`debug_loot_gold_roi.png`, `debug_loot_elixir_roi.png`).
 - **Strict Verification**: Never presses Next when loot is $\ge 800,000$. If either Gold or Elixir is below threshold, it taps `next.PNG` until a suitable base appears.
+
+### 3. Integrated Asset & Template Library (From `CoC-ai-gud`)
+We imported all PNG image assets from `itachiUCHIHA323/CoC-ai-gud` into `templates/ui/` and `templates/cards/`:
+- **UI & Battle Buttons**: Over 50 lobby, matchmaking, dialog, and battle buttons (`attack.png`, `confirm_attack.png`, `find_match.png`, `next.png`, `return_home.png`, `sur_end.png`, etc.).
+- **Troop & Hero Cards**: Over 40 unit and spell icons (`valkyrie.png`, `super_valkyrie.png`, `sneaky_goblin.png`, `E_dragon.png`, `dragon.png`, `king.png`, `queen.png`, `wd.png`, `rc.png`, etc.).
 
 ### 2. Print 1280x720 Coordinate Table & Generate Calibration Overlay
 To inspect exact pixel `(X, Y)` tap locations for all 8 card slots and the 4 base sides:

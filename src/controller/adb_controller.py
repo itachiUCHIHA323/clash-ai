@@ -88,6 +88,13 @@ class ADBController:
         if env_path and os.path.exists(env_path):
             return env_path
 
+        # Check root directory for user-provided adb.exe
+        if os.path.exists("adb.exe"):
+            print("[INFO] Using local 'adb.exe' found in repository root directory.")
+            return os.path.abspath("adb.exe")
+        if os.path.exists("./adb.exe"):
+            return os.path.abspath("./adb.exe")
+
         # Check system PATH
         which_adb = shutil.which("adb")
         if which_adb:
