@@ -100,8 +100,11 @@ class ADBController:
         if which_adb:
             return which_adb
 
-        # Check common Windows BlueStacks 5 & Android SDK paths
+        # Check common Windows BlueStacks 5, MuMu Player, & Android SDK paths
         common_windows_paths = [
+            r"C:\Program Files\Netease\MuMuPlayer-12.0\shell\adb.exe",
+            r"C:\Program Files (x86)\Netease\MuMuPlayer-12.0\shell\adb.exe",
+            r"C:\Program Files\Netease\MuMuPlayer-9.0\shell\adb.exe",
             r"C:\Program Files\BlueStacks_nxt\HD-Adb.exe",
             r"C:\Program Files\BlueStacks_nxt\adb.exe",
             r"C:\Program Files (x86)\BlueStacks_nxt\HD-Adb.exe",

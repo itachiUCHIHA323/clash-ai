@@ -38,21 +38,30 @@ Unlike board games (Chess, Go) or games with official AI APIs (StarCraft II via 
 +-------------------------------------------------------------+
 ```
 
-## 🎮 BlueStacks 5 & MuMu Player (`1280x720`) Guide
+## 🎮 MuMu Player, BlueStacks 5 & LDPlayer (`1280x720`) Guide
 
-If you are running **BlueStacks 5 (BST 5)** or **MuMu Player** at **`1280x720`** resolution, our system features automatic emulator discovery:
+Why did older bots work on LDPlayer but fail on MuMu Player?
+- **Port Differences**: LDPlayer uses `127.0.0.1:5555`, whereas MuMu Player uses **`127.0.0.1:7555`** (and appears as **`emulator-5556`** in `adb devices`).
+- **ADB Executable Path**: MuMu Player stores its ADB in `C:\Program Files\Netease\MuMuPlayer-12.0\shell\adb.exe`.
 
-### 1. Automatic ADB Device Detection (Zero Configuration!)
-Whether your emulator appears as **`127.0.0.1:5555`**, **`emulator-5556`** (MuMu Player default), or **`127.0.0.1:7555`**, `ADBController` automatically detects your active connected emulator and switches to it without needing `--adb-serial`!
+### 1. How to Configure MuMu Player Settings (Crucial for OCR & Taps!)
+In MuMu Player:
+1. Open **Settings (Gear Icon)** $\rightarrow$ **Display / Screen Settings**.
+2. Set Resolution to **Custom $\rightarrow$ `1280` Width x `720` Height**.
+3. Set DPI to **`240 DPI`** (Standard 720p Android DPI).
+4. Restart MuMu Player!
+
+### 2. Automatic MuMu Player Discovery (Zero Configuration!)
+In `clash-ai`, `ADBController` automatically searches MuMu Player's installation folder (`Netease\MuMuPlayer-12.0\shell\adb.exe`), automatically connects to port `7555`, and automatically switches to `emulator-5556`:
 ```bash
-# Test connection (automatically detects BlueStacks 5 or MuMu Player):
+# Test connection (automatically detects MuMu Player, BlueStacks 5, or LDPlayer):
 python -m src.test_bot --mode test-connection
 ```
 
 > [!TIP]
-> **Getting `[WinError 2] The system cannot find the file specified` on Windows?**
-> - **We added Local `./adb.exe` & Automatic Discovery**: Our code automatically uses `./adb.exe` in the repository root directory or `C:\Program Files\BlueStacks_nxt\HD-Adb.exe`!
-> - **If BlueStacks or MuMu is in a custom drive/folder**, pass `--adb-path` directly:
+> **Getting `[WinError 2]` or ADB not found on Windows?**
+> - Our code automatically uses `./adb.exe` in the repository root directory, MuMu's `shell\adb.exe`, or BlueStacks `HD-Adb.exe`!
+> - If your emulator is in a custom drive/folder, pass `--adb-path` directly:
 >   ```bash
 >   python -m src.test_bot --mode test-connection --adb-path "D:\MuMuPlayer-12.0\shell\adb.exe"
 >   ```
