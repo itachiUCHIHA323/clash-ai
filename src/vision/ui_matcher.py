@@ -24,7 +24,7 @@ class UIMatcher:
 
     def _load_ui_templates(self) -> None:
         """Load UI button images (attack.png, find.PNG, etc.)."""
-        target_names = ["attack", "find", "next", "attack_final", "surrender"]
+        target_names = ["attack", "find", "next", "attack_final", "return", "surrender"]
 
         for search_dir in self.search_dirs:
             if not os.path.exists(search_dir):

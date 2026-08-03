@@ -92,6 +92,18 @@ def run_tests(adb_serial: str, mode: str, troop_type: str, side: str, duration: 
             print("  -> Try running: adb connect 127.0.0.1:5555")
         return
 
+    if mode == "auto-farmer":
+        from src.auto_farmer import AutoFarmer
+        farmer = AutoFarmer(
+            adb_serial=adb_serial,
+            adb_path=adb_path,
+            min_gold=800000,
+            min_elixir=800000,
+            use_adb=use_adb,
+        )
+        farmer.run_continuous(troop_type=troop_type, side=side, max_cycles=5)
+        return
+
     if mode in ["attack", "auto-lobby"]:
         try:
             if mode == "auto-lobby":
@@ -136,8 +148,8 @@ if __name__ == "__main__":
         "--mode",
         type=str,
         default="test-connection",
-        choices=["test-connection", "calibrate", "attack", "auto-lobby"],
-        help="What to run: 'test-connection', 'calibrate', 'attack', or 'auto-lobby'",
+        choices=["test-connection", "calibrate", "attack", "auto-lobby", "auto-farmer"],
+        help="What to run: 'test-connection', 'calibrate', 'attack', 'auto-lobby', or 'auto-farmer'",
     )
     parser.add_argument(
         "--adb-serial",

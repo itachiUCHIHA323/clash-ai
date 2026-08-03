@@ -156,6 +156,23 @@ class ADBController:
         except Exception as e:
             print(f"[WARN] ADB swipe failed: {e}")
 
+    def zoom_out(self) -> None:
+        """
+        Perform a Pinch-Out / Zoom-Out motion on the base so the entire 4-corner map is visible.
+        On BlueStacks 5, sends dual inward swipe gestures from opposite corners to the center.
+        """
+        print("[ZOOM OUT] Performing Pinch-Out motion to zoom out base view...")
+        try:
+            w, h = self.get_screen_resolution()
+            # Swipe from top-left toward center
+            self.swipe(int(w * 0.2), int(h * 0.2), int(w * 0.45), int(h * 0.45), duration_ms=250)
+            time.sleep(0.1)
+            # Swipe from bottom-right toward center
+            self.swipe(int(w * 0.8), int(h * 0.8), int(w * 0.55), int(h * 0.55), duration_ms=250)
+            time.sleep(0.3)
+        except Exception as e:
+            print(f"[WARN] Zoom-out gesture encountered minor error: {e}")
+
     def get_screen_resolution(self) -> Tuple[int, int]:
         """
         Query the screen resolution (width, height) of the connected device.

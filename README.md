@@ -83,13 +83,16 @@ This outputs a clean ASCII coordinate table and saves **`debug_calibration_1280x
 ### 3. Launch an Attack on BlueStacks 5
 Run a predetermined attack directly from the command line:
 ```bash
-# 1. Automatic Lobby-to-Battle loop (uses attack.png, find.PNG, surrender.PNG):
+# 1. Continuous Farming Loop (OCR Gold/Elixir >= 800k -> Pinch-Out -> Outermost Edge Deploy -> Return Home):
+python -m src.auto_farmer --troop VALKYRIE --min-gold 800000 --min-elixir 800000 --cycles 5 --adb-serial 127.0.0.1:5555
+
+# 2. Automatic Lobby-to-Battle loop (uses attack.png, find.PNG, return.PNG, surrender.PNG):
 python -m src.test_bot --mode auto-lobby --troop EDRAGON --side BOTTOM_LEFT --adb-serial 127.0.0.1:5555
 
-# 2. Sneaky Goblin / Valkyrie Surround Attack across all 4 sides + 1 Hero per side:
+# 3. Sneaky Goblin / Valkyrie Surround Attack across all 4 sides + 1 Hero per side:
 python -m src.test_bot --mode attack --troop SNEAKY_GOBLIN --adb-serial 127.0.0.1:5555
 
-# 3. Electro Dragon Line Sweep on BOTTOM_LEFT side + all 4 Heroes alongside:
+# 4. Electro Dragon Line Sweep on BOTTOM_LEFT side + all 4 Heroes alongside:
 python -m src.test_bot --mode attack --troop EDRAGON --side BOTTOM_LEFT --adb-serial 127.0.0.1:5555
 ```
 
@@ -158,6 +161,7 @@ clash-ai/
 ├── requirements.txt           # Python dependencies
 ├── templates/                 # Image template directories (cards & UI buttons)
 ├── src/
+│   ├── auto_farmer.py         # Master Continuous Auto-Farming Loop (Lobby -> Loot OCR -> Edge Deploy -> Return Home)
 │   ├── test_bot.py            # Master CLI runner for BlueStacks 5 testing, calibration & attacks
 │   ├── calibrate_coords.py    # 1280x720 coordinate table generator & debug overlay creator
 │   ├── controller/
@@ -165,6 +169,7 @@ clash-ai/
 │   │   └── adb_controller.py  # Standard ADB emulator screen capture & tap fallback
 │   ├── vision/
 │   │   ├── ui_matcher.py      # Auto-navigation using user's attack.png, find.PNG, surrender.PNG
+│   │   ├── loot_reader.py     # Gold & Elixir OCR scanner & threshold comparator (800,000 default)
 │   │   ├── card_scanner.py    # Deployment bar card recognition (Templates + Slot Order fallback)
 │   │   ├── fast_ocr.py        # Sub-millisecond ROI template matching & HSV star detector
 │   │   └── detector.py        # YOLOv8 + OpenCV perception pipeline

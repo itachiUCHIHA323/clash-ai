@@ -80,6 +80,21 @@ class FastController:
         duration_ms = (time.perf_counter() - start_t) * 1000.0
         return duration_ms
 
+    def zoom_out(self) -> None:
+        """
+        Perform a Pinch-Out / Zoom-Out motion on the desktop emulator window using mouse scroll down.
+        """
+        print("[ZOOM OUT] Sending zoom-out scroll commands to emulator window...")
+        if PYAUTOGUI_AVAILABLE:
+            try:
+                w, h = self.region["width"], self.region["height"]
+                pyautogui.moveTo(self.region["left"] + w // 2, self.region["top"] + h // 2)
+                for _ in range(5):
+                    pyautogui.scroll(-200)
+                    time.sleep(0.05)
+            except Exception as e:
+                print(f"[WARN] Zoom out scroll failed: {e}")
+
     def benchmark(self, iterations: int = 50) -> Dict[str, float]:
         """
         Benchmark frame capture and input latency.

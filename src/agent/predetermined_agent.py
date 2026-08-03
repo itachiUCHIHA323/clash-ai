@@ -35,23 +35,23 @@ class PredeterminedAttacker:
         self.card_scanner = CardScanner()
 
         # 4-Sided Base Perimeter Geometry (Normalized Coordinates 0.0 - 1.0)
-        # Each side is represented by a sequence of drop points along that edge
+        # Positioned strictly on the OUTERMOST EDGE of the green map border to avoid "cannot deploy here" red zone errors!
         self.sides_geometry = {
             "TOP_LEFT": [
-                (0.18, 0.45), (0.23, 0.40), (0.28, 0.35), (0.33, 0.30),
-                (0.38, 0.25), (0.43, 0.20)
+                (0.15, 0.45), (0.20, 0.39), (0.25, 0.33), (0.31, 0.27),
+                (0.36, 0.21), (0.42, 0.15)
             ],
             "TOP_RIGHT": [
-                (0.57, 0.20), (0.62, 0.25), (0.67, 0.30), (0.72, 0.35),
-                (0.77, 0.40), (0.82, 0.45)
+                (0.58, 0.15), (0.63, 0.21), (0.69, 0.27), (0.74, 0.33),
+                (0.80, 0.39), (0.85, 0.45)
             ],
             "BOTTOM_RIGHT": [
-                (0.82, 0.55), (0.77, 0.60), (0.72, 0.65), (0.67, 0.70),
-                (0.62, 0.75), (0.57, 0.80)
+                (0.85, 0.55), (0.80, 0.61), (0.74, 0.67), (0.69, 0.73),
+                (0.63, 0.79), (0.58, 0.85)
             ],
             "BOTTOM_LEFT": [
-                (0.43, 0.80), (0.38, 0.75), (0.33, 0.70), (0.28, 0.65),
-                (0.23, 0.60), (0.18, 0.55)
+                (0.42, 0.85), (0.36, 0.79), (0.31, 0.73), (0.25, 0.67),
+                (0.20, 0.61), (0.15, 0.55)
             ],
         }
 
@@ -125,21 +125,32 @@ class PredeterminedAttacker:
         print(f"[INFO] Deployment complete! Monitoring battle for {monitor_duration_sec}s...")
         return self.monitor_battle(monitor_duration_sec)
 
+    def zoom_out_base(self) -> None:
+        """Perform pinch-out/zoom-out motion so the entire base is visible before deploying."""
+        if hasattr(self.controller, "zoom_out"):
+            self.controller.zoom_out()
+        else:
+            print("[ZOOM OUT] Active controller does not support zoom_out(). Skipping.")
+
     def execute_surround_attack(self, troop_type: str, card_map: Dict[str, Tuple[int, int]]) -> None:
         """
         Surround Deployment (Valkyries / Sneaky Goblins):
-        1. Deploy troops evenly across ALL 4 SIDES of the base.
-        2. Deploy 4 Heroes (King, Queen, Warden, Champion) — ONE on EACH of the 4 sides.
+        1. Zoom out base view using pinch-out motion.
+        2. Deploy troops evenly across ALL 4 SIDES of the base along the outermost green edge.
+        3. Deploy 4 Heroes (King, Queen, Warden, Champion) — ONE on EACH of the 4 sides.
         """
-        print(f"[SURROUND ATTACK] Deploying '{troop_type}' on ALL 4 SIDES of the base...")
+        print(f"[SURROUND ATTACK] Zooming out base & deploying '{troop_type}' on ALL 4 SIDES along outermost edge...")
+        self.zoom_out_base()
 
-        # Step 1: Deploy troops across all 4 sides
+        # Step 1: Deploy troops across all 4 sides along the outermost green edge
         if self.select_card_by_name(troop_type, card_map):
             for side_name, points in self.sides_geometry.items():
-                print(f"  -> Deploying {troop_type} wave on side: {side_name}")
-                for nx, ny in points:
-                    self.tap_normalized(nx, ny)
-                    time.sleep(0.05)
+                print(f"  -> Deploying {troop_type} wave along outermost edge of side: {side_name}")
+                # Deploy 8 taps per side (32 total taps) so any army count up to ~30-40 units is fully deployed
+                for _ in range(2):
+                    for nx, ny in points:
+                        self.tap_normalized(nx, ny)
+                        time.sleep(0.04)
 
         time.sleep(0.5)
 
@@ -154,7 +165,6 @@ class PredeterminedAttacker:
 
         for hero_name, assigned_side in hero_side_mapping.items():
             if self.select_card_by_name(hero_name, card_map):
-                # Deploy at the midpoint of the assigned side
                 points = self.sides_geometry[assigned_side]
                 midpoint = points[len(points) // 2]
                 print(f"  -> Deploying Hero '{hero_name}' on {assigned_side} at {midpoint}")
@@ -164,22 +174,24 @@ class PredeterminedAttacker:
     def execute_line_sweep_attack(self, troop_type: str, side: str, card_map: Dict[str, Tuple[int, int]]) -> None:
         """
         Line Sweep Deployment (Dragons / Electro Dragons):
-        1. Deploy all Dragons / E-Drags along ANY SINGLE selected side of the base.
-        2. Deploy ALL 4 Heroes alongside the dragons on that EXACT same side.
+        1. Zoom out base view using pinch-out motion.
+        2. Deploy all Dragons / E-Drags along ANY SINGLE selected side of the base along the outermost green edge.
+        3. Deploy ALL 4 Heroes alongside the dragons on that EXACT same side.
         """
         side = side.upper()
         if side not in self.sides_geometry:
             raise ValueError(f"Invalid side '{side}'. Must be one of {list(self.sides_geometry.keys())}")
 
-        print(f"[LINE SWEEP ATTACK] Deploying ALL '{troop_type}' along side: {side}...")
+        print(f"[LINE SWEEP ATTACK] Zooming out base & deploying ALL '{troop_type}' along outermost edge of side: {side}...")
+        self.zoom_out_base()
         points = self.sides_geometry[side]
 
         # Step 1: Sweep all Dragons / E-Drags along the selected side
         if self.select_card_by_name(troop_type, card_map):
-            for _ in range(2):  # 2 passes along the line to deploy full army
+            for _ in range(3):  # 3 passes along the line to deploy full air army
                 for nx, ny in points:
                     self.tap_normalized(nx, ny)
-                    time.sleep(0.08)
+                    time.sleep(0.06)
 
         time.sleep(0.5)
 
@@ -188,7 +200,6 @@ class PredeterminedAttacker:
         heroes = ["KING", "QUEEN", "WARDEN", "CHAMPION"]
         for i, hero_name in enumerate(heroes):
             if self.select_card_by_name(hero_name, card_map):
-                # Spread heroes slightly along the same side points
                 pt = points[i % len(points)]
                 print(f"  -> Deploying Hero '{hero_name}' at {pt} on {side}")
                 self.tap_normalized(pt[0], pt[1])
