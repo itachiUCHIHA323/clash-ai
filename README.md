@@ -108,13 +108,16 @@ Run a predetermined attack directly from the command line:
 # 1. State-Verified Continuous Farming Loop (800k loot -> Pinch-Out -> Outermost Edge Deploy -> Return Home):
 python -m src.auto_farmer --troop VALKYRIE --min-gold 800000 --min-elixir 800000 --cycles 5
 
-# 2. Automatic Lobby-to-Battle loop (uses attack.png, find.PNG, return.PNG, surrender.PNG):
+# 2. 4-Step Tactical Attack Demo on Full-Base Screenshots (Generates visual attack overlays):
+python -m src.test_bot --mode test-attack-demo
+
+# 3. Automatic Lobby-to-Battle loop (uses attack.png, find.PNG, return.PNG, surrender.PNG):
 python -m src.test_bot --mode auto-lobby --troop EDRAGON --side BOTTOM_LEFT
 
-# 3. Sneaky Goblin / Valkyrie Surround Attack across all 4 sides + 1 Hero per side:
+# 4. Sneaky Goblin / Valkyrie Surround Attack across all 4 sides + 1 Hero per side:
 python -m src.test_bot --mode attack --troop SNEAKY_GOBLIN
 
-# 4. Electro Dragon Line Sweep on BOTTOM_LEFT side + all 4 Heroes alongside:
+# 5. Electro Dragon Line Sweep on BOTTOM_LEFT side + all 4 Heroes alongside:
 python -m src.test_bot --mode attack --troop EDRAGON --side BOTTOM_LEFT
 ```
 
@@ -122,12 +125,15 @@ python -m src.test_bot --mode attack --troop EDRAGON --side BOTTOM_LEFT
 
 When building an AI for Clash of Clans, trying to train an RL agent from scratch without a baseline is inefficient. We structure learning into **3 progressive phases**:
 
-### Phase 1: Predetermined Scripted Deployment (Rule-Based Baseline)
-Before training neural networks, use **`src/agent/predetermined_agent.py`** (or **`src/agent/scripted_agent.py`**) to test your emulator input bridge and establish a baseline win-rate.
-- **Why start here?** It validates sub-millisecond tap actuation (`FastController`) and UI state monitoring (`FastUIReader`) without waiting for model training.
+### Phase 1: Predetermined Scripted Deployment (4-Step Tactical Baseline)
+Before training neural networks, use **`src/agent/predetermined_agent.py`** to execute specialized 4-Step Tactical Attacks:
+1. **STEP 1 (Troops First - ALL OF THEM)**: Deploys all available troops first along the outermost green grass border to guarantee zero "cannot deploy here" red zone errors.
+2. **STEP 2 (Then Heroes)**: Deploys all available Heroes (`KING`, `QUEEN`, `WARDEN`, `CHAMPION`) *after* all troops have been dropped (1 per side for Surround, alongside troops for Line Sweep).
+3. **STEP 3 (Spells A BIT AHEAD - NOT AT BACK)**: Deploys Rage and Support spells slightly INWARD toward the center of the base (`~18%` ahead of the troop drop line), placing the spell circle right where troops walk into enemy defenses.
+4. **STEP 4 (Hero Ability Activation)**: Waits `~7 seconds` after heroes engage defenses and taps all Hero cards in the deployment bar again to trigger Hero Abilities (Gauntlet/Tome/Arrow).
 - **Specialized Attack Logic (`PredeterminedAttacker`)**:
-  - `SURROUND_ATTACK` (for **Sneaky Goblins** or **Valkyries**): Deploys troops evenly across **all 4 sides** of the base perimeter (`TOP_LEFT`, `TOP_RIGHT`, `BOTTOM_RIGHT`, `BOTTOM_LEFT`), and deploys **4 Heroes with ONE Hero on EACH side** (King on Top-Left, Queen on Top-Right, Warden on Bottom-Right, Royal Champion on Bottom-Left).
-  - `LINE_SWEEP_ATTACK` (for **Dragons** or **Electro Dragons / E-Drags**): Deploys all dragons along **any single selected side**, and deploys **all 4 Heroes alongside the dragons on that exact same side** to push together.
+  - `SURROUND_ATTACK` (for **Sneaky Goblins** or **Valkyries**): Deploys troops evenly across **all 4 sides** of the base perimeter (`TOP_LEFT`, `TOP_RIGHT`, `BOTTOM_RIGHT`, `BOTTOM_LEFT`), deploys **4 Heroes with ONE Hero on EACH side**, drops 4 Inward Rage Spells, and triggers Hero Abilities.
+  - `LINE_SWEEP_ATTACK` (for **Dragons** or **Electro Dragons / E-Drags**): Deploys all dragons along **any single selected side**, deploys **all 4 Heroes alongside the dragons on that exact same side**, drops Rage Spells along their flight path, and triggers Hero Abilities.
 
 ### How Deployment Card Recognition Works (`CardScanner`)
 To select cards dynamically from the deployment bar without hardcoding slots:
@@ -186,6 +192,7 @@ clash-ai/
 │   ├── auto_farmer.py         # Master Continuous Auto-Farming Loop (Lobby -> Loot OCR -> Edge Deploy -> Return Home)
 │   ├── test_bot.py            # Master CLI runner for BlueStacks 5 testing, calibration & attacks
 │   ├── test_loot.py           # Interactive Loot OCR diagnostic & visual bounding box calibrator
+│   ├── test_attack_on_demo.py # 4-Step Tactical Attack Demo & Calibration on User Full-Base Screenshots
 │   ├── calibrate_coords.py    # 1280x720 coordinate table generator & debug overlay creator
 │   ├── controller/
 │   │   ├── fast_controller.py # Ultra-low latency mss window capture & pyautogui taps (~3ms)
