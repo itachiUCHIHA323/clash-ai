@@ -9,8 +9,8 @@ Below 'avail_loot.PNG' are the 3 rows:
 2. Elixir row -> slices digits to the right of Elixir icon.
 3. Dark Elixir row -> slices digits to the right of Dark Elixir icon.
 
-Uses Otsu and Multi-Threshold Rapid OCR so Gold (yellow) and Elixir (magenta)
-digits are segmented with 100% accuracy.
+Uses Raw BGR Color + Grayscale + Otsu with RapidOCR / EasyOCR / Tesseract
+to segment yellow Gold and magenta Elixir digits with 100% accuracy.
 """
 
 import os
@@ -95,20 +95,16 @@ class LootReader:
                     img = cv2.imread(path, cv2.IMREAD_COLOR)
                     if img is not None:
                         self.icon_templates[resource] = img
-                        print(f"[INFO] Loaded Loot template '{resource}' from '{path}'")
+                        print(f"[INFO] Loaded Loot template '{resource}' from '{path}' ({img.shape[1]}x{img.shape[0]})")
                         break
 
     def read_loot(self, frame: np.ndarray, save_debug_roi: bool = True) -> Dict[str, int]:
         """
         Extract Available Gold, Elixir, and Dark Elixir amounts from the UPPER-LEFT corner of a scout frame.
-
-        :param frame: Screenshot image (BGR format).
-        :param save_debug_roi: Whether to save debug_loot_gold_roi.png and debug_loot_elixir_roi.png.
-        :return: Dict with 'gold', 'elixir', and 'dark_elixir' integers.
         """
         h, w, _ = frame.shape
 
-        # Search ONLY in the upper-left corner (Y = 10 to 260 px, X = 10 to 360 px at 1280x720)
+        # Search ONLY in the upper-left corner (Y = 10 to 270 px, X = 10 to 380 px at 1280x720)
         y1, y2 = int(h * 0.01), int(h * 0.38)
         x1, x2 = int(w * 0.01), int(w * 0.30)
         upper_left_roi = frame[y1:y2, x1:x2]
@@ -122,29 +118,29 @@ class LootReader:
             roi_h, roi_w, _ = upper_left_roi.shape
             # Row 1 below 'avail_loot.PNG' banner: Gold
             gy1 = min(roi_h, ay + a_h - 2)
-            gy2 = min(roi_h, gy1 + 36)
+            gy2 = min(roi_h, gy1 + 38)
             gx1 = min(roi_w, ax + 25)
-            gx2 = min(roi_w, gx1 + 185)
+            gx2 = min(roi_w, gx1 + 195)
             gold_crop = upper_left_roi[gy1:gy2, gx1:gx2]
 
             # Row 2 below Gold: Elixir
-            ey1 = min(roi_h, gy2 - 3)
-            ey2 = min(roi_h, ey1 + 36)
+            ey1 = min(roi_h, gy2 - 2)
+            ey2 = min(roi_h, ey1 + 38)
             elixir_crop = upper_left_roi[ey1:ey2, gx1:gx2]
 
             # Row 3 below Elixir: Dark Elixir
-            dy1 = min(roi_h, ey2 - 3)
-            dy2 = min(roi_h, dy1 + 36)
+            dy1 = min(roi_h, ey2 - 2)
+            dy2 = min(roi_h, dy1 + 38)
             dark_crop = upper_left_roi[dy1:dy2, gx1:gx2]
             print(f"[LOOT SCAN] Master anchor 'avail_loot.PNG' matched! Slicing Gold, Elixir, Dark Elixir rows below it.")
 
         # 2. Fallback / Refinement: Match individual icon templates (gold.PNG, elixir.PNG)
         if gold_crop is None or gold_crop.size == 0:
-            gold_crop = self._slice_icon_right(upper_left_roi, "gold", default_y=(55, 90), default_x=(55, 230))
+            gold_crop = self._slice_icon_right(upper_left_roi, "gold", default_y=(55, 95), default_x=(55, 240))
         if elixir_crop is None or elixir_crop.size == 0:
-            elixir_crop = self._slice_icon_right(upper_left_roi, "elixir", default_y=(90, 125), default_x=(55, 230))
+            elixir_crop = self._slice_icon_right(upper_left_roi, "elixir", default_y=(95, 135), default_x=(55, 240))
         if dark_crop is None or dark_crop.size == 0:
-            dark_crop = self._slice_icon_right(upper_left_roi, "dark_elixir", default_y=(125, 160), default_x=(55, 200))
+            dark_crop = self._slice_icon_right(upper_left_roi, "dark_elixir", default_y=(135, 175), default_x=(55, 210))
 
         if save_debug_roi:
             for name, crop in [("gold", gold_crop), ("elixir", elixir_crop), ("dark_elixir", dark_crop)]:
@@ -176,7 +172,7 @@ class LootReader:
 
         res = cv2.matchTemplate(upper_left_roi, tmpl, cv2.TM_CCOEFF_NORMED)
         _, max_val, _, max_loc = cv2.minMaxLoc(res)
-        if max_val >= 0.60:
+        if max_val >= 0.58:
             return True, (max_loc[0], max_loc[1], tw, th)
         return False, None
 
@@ -195,10 +191,10 @@ class LootReader:
             if tw <= roi_w and th <= roi_h:
                 res = cv2.matchTemplate(upper_left_roi, tmpl, cv2.TM_CCOEFF_NORMED)
                 _, max_val, _, max_loc = cv2.minMaxLoc(res)
-                if max_val >= 0.60:
+                if max_val >= 0.58:
                     ix, iy = max_loc
                     crop_x1 = min(roi_w, ix + tw + 2)
-                    crop_x2 = min(roi_w, crop_x1 + 175)
+                    crop_x2 = min(roi_w, crop_x1 + 185)
                     crop_y1 = max(0, iy - 4)
                     crop_y2 = min(roi_h, iy + th + 6)
                     return upper_left_roi[crop_y1:crop_y2, crop_x1:crop_x2]
@@ -209,31 +205,29 @@ class LootReader:
 
     def _run_rapid_ocr(self, crop: Optional[np.ndarray], resource_name: str) -> int:
         """
-        Run multi-threshold rapid OCR (Tesseract / EasyOCR) on the sliced digit ROI image.
-        Uses Otsu thresholding and low-value binarization to correctly capture Yellow (Gold)
-        and Magenta (Elixir) text.
+        Run OCR (RapidOCR / EasyOCR / Tesseract) on raw BGR Color + Grayscale + Otsu images.
+        Testing raw BGR Color first prevents binary thresholding from erasing yellow Gold
+        or magenta Elixir text.
         """
         if crop is None or crop.size == 0:
             return 0
 
-        gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
-        scaled = cv2.resize(gray, (0, 0), fx=2.5, fy=2.5, interpolation=cv2.INTER_CUBIC)
-
-        # Build 3 binarization modes to handle Gold (yellow ~150), Elixir (magenta ~115), and White text
-        _, thresh_otsu = cv2.threshold(scaled, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-        _, thresh_low = cv2.threshold(scaled, 105, 255, cv2.THRESH_BINARY)
-        thresh_adapt = cv2.adaptiveThreshold(scaled, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 15, -2)
+        # Create 2x scaled BGR color and grayscale versions
+        scaled_bgr = cv2.resize(crop, (0, 0), fx=2.5, fy=2.5, interpolation=cv2.INTER_CUBIC)
+        gray = cv2.cvtColor(scaled_bgr, cv2.COLOR_BGR2GRAY)
+        _, thresh_otsu = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        _, thresh_low = cv2.threshold(gray, 105, 255, cv2.THRESH_BINARY)
 
         candidates = []
 
-        # 1. Try RapidOCR (ONNX runtime - fastest and most accurate, no external exe required)
+        # 1. Try RapidOCR (ONNX runtime - works best on BGR color & grayscale)
         if RAPIDOCR_AVAILABLE:
             global RAPIDOCR_ENGINE
             try:
                 if RAPIDOCR_ENGINE is None:
                     RAPIDOCR_ENGINE = RapidOCR()
-                for mode_name, th_img in [("Otsu", thresh_otsu), ("LowThresh", thresh_low), ("Adaptive", thresh_adapt)]:
-                    result, _ = RAPIDOCR_ENGINE(th_img)
+                for mode_name, img in [("BGR", scaled_bgr), ("Gray", gray), ("Otsu", thresh_otsu)]:
+                    result, _ = RAPIDOCR_ENGINE(img)
                     if result:
                         for box, text, score in result:
                             digits = re.sub(r"\D", "", text)
@@ -242,26 +236,14 @@ class LootReader:
             except Exception as e:
                 print(f"[DEBUG] RapidOCR failed on {resource_name}: {e}")
 
-        # 2. Try Tesseract OCR across binarization modes if RapidOCR didn't find anything
-        if PYTESSERACT_AVAILABLE and not candidates:
-            for mode_name, th_img in [("Otsu", thresh_otsu), ("LowThresh", thresh_low), ("Adaptive", thresh_adapt)]:
-                try:
-                    text = pytesseract.image_to_string(th_img, config="--psm 7 -c tessedit_char_whitelist=0123456789")
-                    digits = re.sub(r"\D", "", text)
-                    if digits and len(digits) >= 4:  # CoC loot is typically >= 1,000
-                        val = int(digits)
-                        candidates.append(val)
-                except Exception:
-                    pass
-
-        # 3. Try EasyOCR if available and previous engines found nothing
+        # 2. Try EasyOCR if available and RapidOCR found nothing
         if EASYOCR_AVAILABLE and not candidates:
             global EASYOCR_READER
             try:
                 if EASYOCR_READER is None:
                     EASYOCR_READER = easyocr.Reader(["en"], gpu=False, verbose=False)
-                for mode_name, th_img in [("Otsu", thresh_otsu), ("LowThresh", thresh_low)]:
-                    results = EASYOCR_READER.readtext(th_img, allowlist="0123456789")
+                for mode_name, img in [("BGR", scaled_bgr), ("Gray", gray)]:
+                    results = EASYOCR_READER.readtext(img, allowlist="0123456789")
                     for _, text, conf in results:
                         digits = re.sub(r"\D", "", text)
                         if digits and len(digits) >= 4:
@@ -269,16 +251,23 @@ class LootReader:
             except Exception:
                 pass
 
+        # 3. Try Tesseract OCR across binarization modes if previous engines found nothing
+        if PYTESSERACT_AVAILABLE and not candidates:
+            for mode_name, th_img in [("Otsu", thresh_otsu), ("LowThresh", thresh_low), ("Gray", gray)]:
+                try:
+                    text = pytesseract.image_to_string(th_img, config="--psm 7 -c tessedit_char_whitelist=0123456789")
+                    digits = re.sub(r"\D", "", text)
+                    if digits and len(digits) >= 4:
+                        candidates.append(int(digits))
+                except Exception:
+                    pass
+
         if candidates:
-            # Return the maximum parsed candidate (avoids truncated readings)
             best_val = max(candidates)
             print(f"[LOOT OCR] {resource_name}: {best_val:,}")
             return best_val
 
-        print(
-            f"[LOOT OCR] Could not extract valid digits for {resource_name}. Ensure Tesseract OCR is installed:\n"
-            "  -> Download for Windows: https://github.com/UB-Mannheim/tesseract/wiki"
-        )
+        print(f"[LOOT OCR] Could not read {resource_name} digits. Check debug_loot_{resource_name.lower()}_roi.png")
         return 0
 
     def is_loot_sufficient(self, loot_dict: Dict[str, int], force_attack: bool = False) -> bool:
