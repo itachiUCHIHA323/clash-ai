@@ -22,14 +22,58 @@ class ADBController:
         Initialize the ADB controller.
 
         :param device_serial: Optional serial number of the target device/emulator
-                              (e.g., '127.0.0.1:5555' for BlueStacks 5).
+                              (e.g., '127.0.0.1:5555' for BlueStacks 5, 'emulator-5556' for MuMu).
         :param adb_path: Custom path to adb.exe or HD-Adb.exe.
         """
-        self.device_serial = device_serial
         self.adb_exe = self._find_adb_executable(adb_path)
+        self.device_serial = self._auto_detect_device_serial(device_serial)
         self._adb_base = [self.adb_exe]
         if self.device_serial:
             self._adb_base.extend(["-s", self.device_serial])
+
+    def _auto_detect_device_serial(self, requested_serial: Optional[str] = None) -> Optional[str]:
+        """
+        Check connected ADB devices. If requested_serial is connected, use it.
+        If requested_serial is not connected or None, automatically pick the first active device (e.g. 'emulator-5556').
+        """
+        try:
+            output = subprocess.check_output([self.adb_exe, "devices"], text=True, stderr=subprocess.PIPE)
+            lines = [l.strip() for l in output.strip().splitlines() if l.strip()]
+            active_devices = []
+            for line in lines[1:]:  # Skip 'List of devices attached' header
+                parts = line.split()
+                if len(parts) >= 2 and parts[1] == "device":
+                    active_devices.append(parts[0])
+
+            if not active_devices:
+                # Attempt connecting to common emulator ADB ports (BlueStacks, MuMu Player, Nox)
+                for port in ["5555", "7555", "62001"]:
+                    subprocess.run(
+                        [self.adb_exe, "connect", f"127.0.0.1:{port}"],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                    )
+                # Re-check active devices after auto-connect attempt
+                output2 = subprocess.check_output([self.adb_exe, "devices"], text=True, stderr=subprocess.PIPE)
+                lines2 = [l.strip() for l in output2.strip().splitlines() if l.strip()]
+                for line in lines2[1:]:
+                    parts = line.split()
+                    if len(parts) >= 2 and parts[1] == "device":
+                        active_devices.append(parts[0])
+
+            if not active_devices:
+                return requested_serial
+
+            if requested_serial in active_devices:
+                return requested_serial
+
+            # Automatically use connected device if default requested_serial wasn't found
+            detected = active_devices[0]
+            if requested_serial != detected:
+                print(f"[INFO] Auto-detected active emulator device: '{detected}' (switched from '{requested_serial}')")
+            return detected
+        except Exception:
+            return requested_serial
 
     def _find_adb_executable(self, custom_path: Optional[str] = None) -> str:
         """
@@ -126,8 +170,8 @@ class ADBController:
             print(f"[ERROR] Both screencap methods failed. Error: {e2}")
 
         raise RuntimeError(
-            "Could not capture live screen from BlueStacks 5. Please ensure ADB is enabled "
-            "in BlueStacks Settings -> Advanced, and check connection with: adb devices"
+            f"Could not capture live screen from emulator device ('{self.device_serial}'). "
+            "Please ensure ADB is enabled in your emulator (MuMu / BlueStacks), and verify connection with: adb devices"
         )
 
     def tap(self, x: int, y: int) -> None:

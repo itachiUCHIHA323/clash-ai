@@ -38,26 +38,25 @@ Unlike board games (Chess, Go) or games with official AI APIs (StarCraft II via 
 +-------------------------------------------------------------+
 ```
 
-## 🎮 BlueStacks 5 (`127.0.0.1:5555`) Calibration & Testing Guide
+## 🎮 BlueStacks 5 & MuMu Player (`1280x720`) Guide
 
-If you are running **BlueStacks 5 (BST 5)** at **`1280x720`** resolution, we have included automated diagnostic and calibration tools:
+If you are running **BlueStacks 5 (BST 5)** or **MuMu Player** at **`1280x720`** resolution, our system features automatic emulator discovery:
 
-### 1. Check BlueStacks ADB Connection & Screen Capture
-Open BlueStacks Settings $\rightarrow$ Advanced $\rightarrow$ Enable **"Android Debug Bridge (ADB)"**, then run:
+### 1. Automatic ADB Device Detection (Zero Configuration!)
+Whether your emulator appears as **`127.0.0.1:5555`**, **`emulator-5556`** (MuMu Player default), or **`127.0.0.1:7555`**, `ADBController` automatically detects your active connected emulator and switches to it without needing `--adb-serial`!
 ```bash
-python -m src.test_bot --mode test-connection --adb-serial 127.0.0.1:5555
+# Test connection (automatically detects BlueStacks 5 or MuMu Player):
+python -m src.test_bot --mode test-connection
 ```
-This tests your ADB socket connection, verifies `1280x720` resolution, and confirms live screenshot capture.
 
 > [!TIP]
 > **Getting `[WinError 2] The system cannot find the file specified` on Windows?**
 > This means `adb.exe` is not in your Windows PATH.
-> - **We added Automatic Discovery**: Our code now automatically looks for `C:\Program Files\BlueStacks_nxt\HD-Adb.exe`!
-> - **If BlueStacks is on a different drive/folder**, pass `--adb-path` directly:
+> - **We added Automatic Discovery**: Our code automatically looks for `C:\Program Files\BlueStacks_nxt\HD-Adb.exe` and standard ADB paths!
+> - **If BlueStacks or MuMu is in a custom drive/folder**, pass `--adb-path` directly:
 >   ```bash
->   python -m src.test_bot --mode test-connection --adb-serial 127.0.0.1:5555 --adb-path "C:\Program Files\BlueStacks_nxt\HD-Adb.exe"
+>   python -m src.test_bot --mode test-connection --adb-path "D:\MuMuPlayer-12.0\shell\adb.exe"
 >   ```
-> - **To permanently add ADB to Windows**: Open *System Properties* $\rightarrow$ *Environment Variables* $\rightarrow$ Edit `Path` $\rightarrow$ Add `C:\Program Files\BlueStacks_nxt\`.
 
 ### 2. Print 1280x720 Coordinate Table & Generate Calibration Overlay
 To inspect exact pixel `(X, Y)` tap locations for all 8 card slots and the 4 base sides:
