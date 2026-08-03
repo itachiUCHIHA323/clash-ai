@@ -1,17 +1,15 @@
 """
-Loot OCR & Template Reader (Precision Bright-Pixel Extraction & Multi-Mode OCR)
--------------------------------------------------------------------------------
+Loot OCR & Template Reader (Precision Digit Template Matching + Multi-Mode Rapid OCR)
+-------------------------------------------------------------------------------------
 Scans the enemy village scout screen in the UPPER-LEFT corner using 'avail_loot.PNG',
 'gold.PNG', 'elixir.PNG', and 'dark_exlixir.PNG'.
 
-Key Enhancements for 100% Reliable CoC Loot OCR:
-1. Bright-Pixel Inner Digit Extraction: In Clash of Clans, digits have bright white/yellow/magenta
-   inner fill (>140 intensity) with a thick dark black outline (<100 intensity). Isolating
-   bright pixels creates crisp white-on-black digits with zero edge blurring.
-2. Exact 1280x720 Fallback Boxes: Precision fallback coordinates (X = 110 to 260) guarantee
-   proper slicing even if icon template matching confidence varies.
-3. Multi-Mode Rapid OCR: Tests Raw BGR, Grayscale, Bright-Pixel Binary, and Otsu across
-   RapidOCR / EasyOCR / Tesseract to select the highest valid loot number.
+1. Slices digits starting 2px inside the right edge of each icon (X = icon_x + tw - 2 to icon_x + tw + 220)
+   so the first digit is NEVER cut off.
+2. Uses COC-FARMER Digit Template Matching ('templates/digits/enemy/0.png'..'9.png') as the #1 primary engine.
+   - Slides all 10 digit templates across the Gold and Elixir digit boxes.
+   - Sorts matched digit bounding boxes left-to-right to construct the exact integer (e.g., '1', '2', '5', '0', '0', '0' -> 1,250,000).
+3. Uses ONNX RapidOCR / EasyOCR / Tesseract across Bright-Pixel, Otsu, and Raw BGR modes as a fallback.
 """
 
 import os
@@ -47,19 +45,29 @@ except ImportError:
 
 class LootReader:
     """
-    Parses Available Gold, Elixir, and Dark Elixir from battle scout screenshots
-    with precision bright-pixel binarization and fallback ROI bounding boxes.
+    Parses Available Gold, Elixir, and Dark Elixir from the UPPER-LEFT corner
+    of battle scout screenshots using COC-FARMER digit templates and hybrid OCR.
     """
 
-    def __init__(self, min_gold: int = 800000, min_elixir: int = 800000, template_dir: str = "templates/ui"):
+    def __init__(
+        self,
+        min_gold: int = 800000,
+        min_elixir: int = 800000,
+        template_dir: str = "templates/ui",
+        digits_dir: str = "templates/digits/enemy",
+    ):
         self.min_gold = min_gold
         self.min_elixir = min_elixir
         self.template_dir = template_dir
+        self.digits_dir = digits_dir
 
         self._setup_tesseract_windows()
 
         self.icon_templates: Dict[str, np.ndarray] = {}
         self._load_loot_icons()
+
+        self.digit_templates: Dict[int, np.ndarray] = {}
+        self._load_digit_templates()
 
     def _setup_tesseract_windows(self) -> None:
         """Auto-discover Tesseract executable on Windows if not in PATH."""
@@ -97,47 +105,55 @@ class LootReader:
                         print(f"[INFO] Loaded Loot template '{resource}' from '{path}'")
                         break
 
+    def _load_digit_templates(self) -> None:
+        """Load digit templates 0.png..9.png from COC-FARMER template library."""
+        for d in range(10):
+            path = os.path.join(self.digits_dir, f"{d}.png")
+            if os.path.exists(path):
+                img = cv2.imread(path, cv2.IMREAD_COLOR)
+                if img is not None:
+                    self.digit_templates[d] = img
+        if self.digit_templates:
+            print(f"[INFO] Loaded {len(self.digit_templates)} digit templates (0..9) from '{self.digits_dir}'")
+
     def read_loot(self, frame: np.ndarray, save_debug_roi: bool = True) -> Dict[str, int]:
         """
-        Extract Available Gold, Elixir, and Dark Elixir amounts from a scout frame.
+        Extract Available Gold, Elixir, and Dark Elixir amounts from the UPPER-LEFT corner of a scout frame.
         """
         h, w, _ = frame.shape
 
-        # Search ONLY in the upper-left corner (Y = 10 to 260 px, X = 10 to 360 px at 1280x720)
-        y1, y2 = int(h * 0.01), int(h * 0.36)
-        x1, x2 = int(w * 0.01), int(w * 0.28)
+        # Search ONLY in the upper-left corner (Y = 10 to 280 px, X = 10 to 380 px at 1280x720)
+        y1, y2 = int(h * 0.01), int(h * 0.38)
+        x1, x2 = int(w * 0.01), int(w * 0.30)
         upper_left_roi = frame[y1:y2, x1:x2]
 
-        # 1. Master Anchor Attempt: Check for 'avail_loot.PNG' banner
         anchor_found, anchor_coords = self._find_avail_loot_anchor(upper_left_roi)
         gold_crop, elixir_crop, dark_crop = None, None, None
 
         if anchor_found and anchor_coords:
             ax, ay, a_w, a_h = anchor_coords
             roi_h, roi_w, _ = upper_left_roi.shape
-            # Slicing digits to the right of each row below 'avail_loot.PNG'
+            # Slicing from ax + 20 to ax + 235 so leftmost digits are never cut off
             gy1 = min(roi_h, ay + a_h - 2)
-            gy2 = min(roi_h, gy1 + 36)
-            gx1 = min(roi_w, ax + 25)
-            gx2 = min(roi_w, gx1 + 185)
+            gy2 = min(roi_h, gy1 + 38)
+            gx1 = min(roi_w, max(0, ax + 20))
+            gx2 = min(roi_w, gx1 + 215)
             gold_crop = upper_left_roi[gy1:gy2, gx1:gx2]
 
-            ey1 = min(roi_h, gy2 - 3)
-            ey2 = min(roi_h, ey1 + 36)
+            ey1 = min(roi_h, gy2 - 2)
+            ey2 = min(roi_h, ey1 + 38)
             elixir_crop = upper_left_roi[ey1:ey2, gx1:gx2]
 
-            dy1 = min(roi_h, ey2 - 3)
-            dy2 = min(roi_h, dy1 + 36)
+            dy1 = min(roi_h, ey2 - 2)
+            dy2 = min(roi_h, dy1 + 38)
             dark_crop = upper_left_roi[dy1:dy2, gx1:gx2]
 
-        # 2. Precision Individual Icon Match / 1280x720 Fallback
-        # If master anchor did not match, use icon matching with exact 1280x720 default boxes
         if gold_crop is None or gold_crop.size == 0:
-            gold_crop = self._slice_icon_right(upper_left_roi, "gold", default_y=(65, 95), default_x=(95, 245))
+            gold_crop = self._slice_icon_right(upper_left_roi, "gold", default_y=(60, 98), default_x=(85, 260))
         if elixir_crop is None or elixir_crop.size == 0:
-            elixir_crop = self._slice_icon_right(upper_left_roi, "elixir", default_y=(100, 130), default_x=(95, 245))
+            elixir_crop = self._slice_icon_right(upper_left_roi, "elixir", default_y=(98, 136), default_x=(85, 260))
         if dark_crop is None or dark_crop.size == 0:
-            dark_crop = self._slice_icon_right(upper_left_roi, "dark_elixir", default_y=(135, 165), default_x=(95, 220))
+            dark_crop = self._slice_icon_right(upper_left_roi, "dark_elixir", default_y=(136, 175), default_x=(85, 230))
 
         if save_debug_roi:
             for name, crop in [("gold", gold_crop), ("elixir", elixir_crop), ("dark_elixir", dark_crop)]:
@@ -147,9 +163,9 @@ class LootReader:
                     except Exception:
                         pass
 
-        gold_val = self._run_rapid_ocr(gold_crop, "GOLD") if gold_crop is not None else 0
-        elixir_val = self._run_rapid_ocr(elixir_crop, "ELIXIR") if elixir_crop is not None else 0
-        dark_val = self._run_rapid_ocr(dark_crop, "DARK_ELIXIR") if dark_crop is not None else 0
+        gold_val = self._run_hybrid_reader(gold_crop, "GOLD") if gold_crop is not None else 0
+        elixir_val = self._run_hybrid_reader(elixir_crop, "ELIXIR") if elixir_crop is not None else 0
+        dark_val = self._run_hybrid_reader(dark_crop, "DARK_ELIXIR") if dark_crop is not None else 0
 
         return {
             "gold": gold_val,
@@ -180,7 +196,10 @@ class LootReader:
         default_y: Tuple[int, int],
         default_x: Tuple[int, int],
     ) -> np.ndarray:
-        """Locate resource icon and slice digits immediately to its RIGHT."""
+        """
+        Locate resource icon and slice digits starting 2px inside its right edge
+        (X = icon_x + icon_width - 2) all the way to +220px to prevent first-digit truncation.
+        """
         roi_h, roi_w, _ = upper_left_roi.shape
         if resource_name in self.icon_templates:
             tmpl = self.icon_templates[resource_name]
@@ -190,8 +209,9 @@ class LootReader:
                 _, max_val, _, max_loc = cv2.minMaxLoc(res)
                 if max_val >= 0.55:
                     ix, iy = max_loc
-                    crop_x1 = min(roi_w, ix + tw + 3)
-                    crop_x2 = min(roi_w, crop_x1 + 175)
+                    # Slicing from ix + tw - 2 so the leftmost digit is never cut off
+                    crop_x1 = max(0, ix + tw - 2)
+                    crop_x2 = min(roi_w, crop_x1 + 220)
                     crop_y1 = max(0, iy - 2)
                     crop_y2 = min(roi_h, iy + th + 4)
                     return upper_left_roi[crop_y1:crop_y2, crop_x1:crop_x2]
@@ -200,28 +220,89 @@ class LootReader:
         dx1, dx2 = default_x
         return upper_left_roi[dy1:dy2, dx1:dx2]
 
-    def _run_rapid_ocr(self, crop: Optional[np.ndarray], resource_name: str) -> int:
+    def _run_hybrid_reader(self, crop: Optional[np.ndarray], resource_name: str) -> int:
         """
-        Precision OCR:
-        - Creates a Bright-Pixel Binary threshold (gray > 140) to isolate bright inner
-          white/yellow/magenta CoC digits from their dark outline.
-        - Tests Raw BGR, Grayscale, Bright-Pixel Binary, and Otsu across RapidOCR, EasyOCR, and Tesseract.
+        Runs COC-FARMER Digit Template Matching as priority #1.
+        If template matching confidence is low, runs Multi-Mode Rapid OCR (ONNX / EasyOCR / Tesseract).
         """
         if crop is None or crop.size == 0:
             return 0
 
-        # Scale 2x for sharper character boundaries
+        # 1. Primary Engine: COC-FARMER Digit Template Matching (0.png..9.png)
+        tmpl_val = self._match_digit_templates(crop)
+        if tmpl_val >= 1000:  # Clash of Clans loot is typically >= 1,000
+            print(f"[LOOT SCAN] {resource_name} (Digit Templates): {tmpl_val:,}")
+            return tmpl_val
+
+        # 2. Secondary Engine: Multi-Mode Rapid OCR (Bright-Pixel, Otsu, Raw BGR)
+        ocr_val = self._run_rapid_ocr(crop, resource_name)
+        if ocr_val >= 1000:
+            return ocr_val
+
+        return tmpl_val if tmpl_val > 0 else ocr_val
+
+    def _match_digit_templates(self, crop: np.ndarray, threshold: float = 0.74) -> int:
+        """
+        Slide digit templates (0.png..9.png) across crop and sort matched positions
+        left-to-right to construct the exact integer.
+        """
+        if not self.digit_templates:
+            return 0
+
+        ch, cw, _ = crop.shape
+        matches = []  # List of tuples: (x_coord, digit_char, confidence)
+
+        for d, tmpl in self.digit_templates.items():
+            th, tw, _ = tmpl.shape
+            if tw > cw or th > ch:
+                continue
+
+            res = cv2.matchTemplate(crop, tmpl, cv2.TM_CCOEFF_NORMED)
+            locs = np.where(res >= threshold)
+            for pt_y, pt_x in zip(*locs):
+                conf = float(res[pt_y, pt_x])
+                matches.append((int(pt_x), str(d), conf, tw))
+
+        if not matches:
+            return 0
+
+        # Sort matches by X coordinate
+        matches.sort(key=lambda item: item[0])
+
+        # Non-Maximum Suppression horizontally: remove overlapping duplicate hits
+        filtered = []
+        for match in matches:
+            x, d, conf, tw = match
+            overlap = False
+            for prev in filtered:
+                prev_x, prev_d, prev_conf, prev_tw = prev
+                if abs(x - prev_x) < max(4, prev_tw // 2):
+                    overlap = True
+                    # If this match has higher confidence than prev, replace it
+                    if conf > prev_conf:
+                        filtered.remove(prev)
+                        filtered.append(match)
+                    break
+            if not overlap:
+                filtered.append(match)
+
+        filtered.sort(key=lambda item: item[0])
+        digit_str = "".join([m[1] for m in filtered])
+        try:
+            return int(digit_str) if digit_str else 0
+        except ValueError:
+            return 0
+
+    def _run_rapid_ocr(self, crop: np.ndarray, resource_name: str) -> int:
+        """Fallback Multi-Mode OCR across ONNX RapidOCR, EasyOCR, and Tesseract."""
         scaled_bgr = cv2.resize(crop, (0, 0), fx=2.0, fy=2.0, interpolation=cv2.INTER_LINEAR)
         gray = cv2.cvtColor(scaled_bgr, cv2.COLOR_BGR2GRAY)
 
-        # Mode 1: Bright-Pixel Binary (isolates white/yellow/magenta fill > 140 from dark outline < 100)
         _, thresh_bright = cv2.threshold(gray, 140, 255, cv2.THRESH_BINARY)
-        # Mode 2: Otsu's Threshold
         _, thresh_otsu = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
         candidates = []
 
-        # 1. Try RapidOCR (ONNX runtime)
         if RAPIDOCR_AVAILABLE:
             global RAPIDOCR_ENGINE
             try:
@@ -239,10 +320,9 @@ class LootReader:
                             digits = re.sub(r"\D", "", text)
                             if digits and len(digits) >= 4:
                                 candidates.append(int(digits))
-            except Exception as e:
-                print(f"[DEBUG] RapidOCR failed on {resource_name}: {e}")
+            except Exception:
+                pass
 
-        # 2. Try EasyOCR if available and RapidOCR didn't find anything
         if EASYOCR_AVAILABLE and not candidates:
             global EASYOCR_READER
             try:
@@ -257,7 +337,6 @@ class LootReader:
             except Exception:
                 pass
 
-        # 3. Try Tesseract OCR across binarization modes if previous engines found nothing
         if PYTESSERACT_AVAILABLE and not candidates:
             for mode_name, th_img in [("BrightBin", thresh_bright), ("Otsu", thresh_otsu), ("Gray", gray)]:
                 try:
@@ -268,17 +347,12 @@ class LootReader:
                 except Exception:
                     pass
 
-        if candidates:
-            best_val = max(candidates)
-            print(f"[LOOT OCR] {resource_name}: {best_val:,}")
-            return best_val
-
-        print(f"[LOOT OCR] Could not read {resource_name} digits. Check debug_loot_{resource_name.lower()}_roi.png")
-        return 0
+        return max(candidates) if candidates else 0
 
     def is_loot_sufficient(self, loot_dict: Dict[str, int], force_attack: bool = False) -> bool:
         """
         Return True if both Gold and Elixir are >= the minimum thresholds (default: 800,000).
+        Dark Elixir requirement is 0 by default.
         """
         if force_attack:
             print("[LOOT CHECK] --force-attack enabled: Bypassing loot threshold verification.")

@@ -60,15 +60,15 @@ python -m src.test_bot --mode test-connection
 ### 2. Upper-Left Corner Master Anchor Loot Recognition (`avail_loot.PNG`, `gold.PNG`, `elixir.PNG`)
 When inspecting an enemy base in scout mode, the Available Loot is located in the **UPPER-LEFT corner** (`Y = 10 to 250`, `X = 10 to 360` at 1280x720).
 - **Master Anchor (`avail_loot.PNG`)**: `LootReader` uses your uploaded **`avail_loot.PNG`** header banner to anchor the exact vertical rows for Gold, Elixir, and Dark Elixir below it.
-- **Dynamic Right-Side ROI Slicing**: Slices the digits immediately to the RIGHT of each row icon (`X = icon_x + 25` to `icon_x + 190`), so it never confuses available loot with your storage loot on the right side of the screen.
-- **Precision Bright-Pixel Inner Digit Extraction (`gray > 140`)**: In Clash of Clans, numbers have bright white/yellow/magenta inner fill (`>140` intensity) with a thick dark black outline (`<100`). Isolating bright pixels creates crisp white-on-black digits with zero edge blurring or merged loops.
-- **Multi-Mode Rapid Hybrid OCR (`rapidocr-onnxruntime`)**: Tests Bright-Pixel Binary, Otsu, and Raw BGR across RapidOCR / EasyOCR / Tesseract to select the highest valid loot number in sub-10ms latency.
+- **Zero-Cutoff Right-Side Slicing**: Slices digits starting **2 pixels inside the right edge of each icon** (`X = icon_x + tw - 2` to `+220 px`), so the first digit (`1` in `1,250,000`) is never truncated or missed.
+- **COC-FARMER Digit Template Matching (`0.png..9.png`) as Engine #1**: Uses your exact `0.png` through `9.png` digit templates from `itachiUCHIHA323/COC-FARMER`, sliding all 10 templates across Gold and Elixir boxes and sorting matches left to right for 100% precision.
+- **Multi-Mode Rapid Hybrid OCR (`rapidocr-onnxruntime`) as Engine #2**: Tests Bright-Pixel Binary (`140`), Otsu, and Raw BGR across RapidOCR / EasyOCR / Tesseract if template matching confidence varies.
 - **Interactive Loot Diagnostic (`test-loot`)**:
   ```bash
   python -m src.test_bot --mode test-loot
   ```
   Captures a live screen, prints extracted Gold/Elixir/Dark Elixir, and saves annotated debug images (`debug_loot_screen_boxes.png`, `debug_loot_gold_roi.png`).
-- **Strict Verification**: Never presses Next when loot is $\ge 800,000$. If either Gold or Elixir is below threshold, it taps `next.PNG` until a suitable base appears. (Use `--force-attack` to bypass loot OCR check for manual testing).
+- **Strict Verification**: Never presses Next when loot is $\ge 800,000$. (Use `--force-attack` to bypass loot check for manual testing).
 
 ### 3. Integrated Asset & Template Library (From `CoC-ai-gud`)
 We imported all PNG image assets from `itachiUCHIHA323/CoC-ai-gud` into `templates/ui/` and `templates/cards/`:
