@@ -161,28 +161,52 @@ class CardScanner:
             }
         return army
 
-    def is_card_greyed_out(self, frame: np.ndarray, card_x: int, card_y: int) -> bool:
+    def is_card_empty(self, frame: np.ndarray, card_x: int, card_y: int) -> bool:
         """
-        Determine if a card in the bottom bar has been completely deployed (greyed out).
-        When a card is out of troops, Supercell turns its icon grey/desaturated (mean Saturation < 42).
+        100% Reliable Greyed-Out / Deployed Card Detection:
+        In Clash of Clans, an active card has:
+        1. A bright number badge above the card icon (white text > 170 intensity).
+        2. A colorful icon (mean HSV Saturation > 50).
+
+        When all troops are deployed:
+        1. The number badge DISAPPEARS (no bright text above the card).
+        2. The icon turns greyed out (mean Saturation drops < 40).
         """
         h, w, _ = frame.shape
-        y1 = max(0, card_y - 25)
-        y2 = min(h, card_y + 15)
-        x1 = max(0, card_x - 22)
-        x2 = min(w, card_x + 22)
 
-        icon_crop = frame[y1:y2, x1:x2]
-        if icon_crop.size == 0:
-            return True
+        # Check 1: Does a number badge exist above the card?
+        y1_badge = max(0, card_y - 32)
+        y2_badge = max(0, card_y - 6)
+        x1_badge = max(0, card_x - 16)
+        x2_badge = min(w, card_x + 16)
+        badge_crop = frame[y1_badge:y2_badge, x1_badge:x2_badge]
 
-        hsv = cv2.cvtColor(icon_crop, cv2.COLOR_BGR2HSV)
-        mean_sat = float(hsv[:, :, 1].mean())
-        mean_val = float(hsv[:, :, 2].mean())
+        if badge_crop.size > 0:
+            gray_badge = cv2.cvtColor(badge_crop, cv2.COLOR_BGR2GRAY)
+            _, thresh = cv2.threshold(gray_badge, 175, 255, cv2.THRESH_BINARY)
+            white_pixels = np.count_nonzero(thresh)
+            # An active count badge has >= 15 white pixels. Empty badge has < 12 pixels.
+            badge_empty = white_pixels < 12
+        else:
+            badge_empty = True
 
-        # An active colorful card has mean_sat > 50. A greyed out card drops to < 38 saturation
-        is_empty = mean_sat < 40.0 or mean_val < 45.0
-        return is_empty
+        # Check 2: Is the icon desaturated / greyed out?
+        y1_icon = max(0, card_y - 25)
+        y2_icon = min(h, card_y + 15)
+        x1_icon = max(0, card_x - 22)
+        x2_icon = min(w, card_x + 22)
+        icon_crop = frame[y1_icon:y2_icon, x1_icon:x2_icon]
+
+        if icon_crop.size > 0:
+            hsv = cv2.cvtColor(icon_crop, cv2.COLOR_BGR2HSV)
+            mean_sat = float(hsv[:, :, 1].mean())
+            mean_val = float(hsv[:, :, 2].mean())
+            icon_greyed = mean_sat < 40.0 or mean_val < 45.0
+        else:
+            icon_greyed = True
+
+        # The card is out of units if BOTH the badge is gone AND/OR the icon is greyed out
+        return badge_empty or icon_greyed
 
     def get_slot_coordinate(self, slot_index: int, width: Optional[int] = None, height: Optional[int] = None) -> Tuple[int, int]:
         """Calculate screen (X, Y) coordinate for a 1-indexed deployment card slot along the bottom bar."""

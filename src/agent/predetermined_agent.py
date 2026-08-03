@@ -36,24 +36,24 @@ class PredeterminedAttacker:
 
         self.card_scanner = CardScanner()
 
-        # 4-Sided Base Perimeter Geometry (Absolute Outermost Green Border 0.0 - 1.0, margin = 11%)
-        # Positioned strictly on the outermost edge of the screen grass to NEVER touch the red restricted area
+        # 4-Sided Base Perimeter Geometry (Absolute Outer Safe Grass Border 0.0 - 1.0, margin = 8%)
+        # Positioned strictly on the outermost edge of the screen grass (8% margin) to NEVER touch the red restricted area
         self.sides_geometry = {
             "TOP_LEFT": [
-                (0.12, 0.42), (0.17, 0.37), (0.22, 0.32), (0.27, 0.27),
-                (0.32, 0.22), (0.37, 0.17)
+                (0.08, 0.40), (0.14, 0.35), (0.20, 0.30), (0.26, 0.25),
+                (0.32, 0.20), (0.38, 0.14)
             ],
             "TOP_RIGHT": [
-                (0.63, 0.17), (0.68, 0.22), (0.73, 0.27), (0.78, 0.32),
-                (0.83, 0.37), (0.88, 0.42)
+                (0.62, 0.14), (0.68, 0.20), (0.74, 0.25), (0.80, 0.30),
+                (0.86, 0.35), (0.92, 0.40)
             ],
             "BOTTOM_RIGHT": [
-                (0.88, 0.58), (0.83, 0.63), (0.78, 0.68), (0.73, 0.73),
-                (0.68, 0.78), (0.63, 0.83)
+                (0.92, 0.60), (0.86, 0.65), (0.80, 0.70), (0.74, 0.75),
+                (0.68, 0.80), (0.62, 0.86)
             ],
             "BOTTOM_LEFT": [
-                (0.37, 0.83), (0.32, 0.78), (0.27, 0.73), (0.22, 0.68),
-                (0.17, 0.63), (0.12, 0.58)
+                (0.38, 0.86), (0.32, 0.80), (0.26, 0.75), (0.20, 0.70),
+                (0.14, 0.65), (0.08, 0.60)
             ],
         }
 
@@ -129,15 +129,15 @@ class PredeterminedAttacker:
                 tapped_total += 1
                 time.sleep(0.04)
 
-            # Check if card has become greyed out (all units deployed)
+            # Check if card has become empty / greyed out (all units deployed)
             if tapped_total % 4 == 0 or tapped_total >= initial_count:
                 frame = (
                     self.controller.get_screenshot_fast()
                     if self.use_fast_pipeline
                     else self.controller.get_screenshot()
                 )
-                if self.card_scanner.is_card_greyed_out(frame, cx, cy):
-                    print(f"     [CARD GREYED OUT] '{card_name}' fully deployed after {tapped_total} taps!")
+                if self.card_scanner.is_card_empty(frame, cx, cy):
+                    print(f"     [CARD EMPTY / GREYED OUT] '{card_name}' fully deployed after {tapped_total} taps!")
                     return True
 
         print(f"     [DEPLOY DONE] '{card_name}' finished after {tapped_total} taps.")
