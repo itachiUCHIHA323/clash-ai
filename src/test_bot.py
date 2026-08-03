@@ -93,6 +93,11 @@ def run_tests(adb_serial: str, mode: str, troop_type: str, side: str, duration: 
             print("  -> Try running: adb connect 127.0.0.1:5555")
         return
 
+    if mode == "deploy-overlay":
+        import subprocess
+        subprocess.run([sys.executable, "-m", "src.deploy_overlay"])
+        return
+
     if mode == "test-attack-demo":
         from src.test_attack_on_demo import run_all_demo_calibrations
         run_all_demo_calibrations()
@@ -159,8 +164,8 @@ if __name__ == "__main__":
         "--mode",
         type=str,
         default="test-connection",
-        choices=["test-connection", "calibrate", "attack", "auto-lobby", "auto-farmer", "test-loot", "test-attack-demo"],
-        help="What to run: 'test-connection', 'calibrate', 'attack', 'auto-lobby', 'auto-farmer', 'test-loot', or 'test-attack-demo'",
+        choices=["test-connection", "calibrate", "attack", "auto-lobby", "auto-farmer", "test-loot", "test-attack-demo", "deploy-overlay"],
+        help="What to run: 'test-connection', 'calibrate', 'attack', 'auto-lobby', 'auto-farmer', 'test-loot', 'test-attack-demo', or 'deploy-overlay'",
     )
     parser.add_argument(
         "--adb-serial",

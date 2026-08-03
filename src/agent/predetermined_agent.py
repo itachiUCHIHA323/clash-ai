@@ -36,24 +36,24 @@ class PredeterminedAttacker:
 
         self.card_scanner = CardScanner()
 
-        # 4-Sided Base Perimeter Geometry (Absolute Outer Safe Grass Border 0.0 - 1.0, margin = 8%)
-        # Positioned strictly on the outermost edge of the screen grass (8% margin) to NEVER touch the red restricted area
+        # 4-Sided Base Perimeter Geometry (KrakenPrime Outermost Safe Grass Border 0.0 - 1.0)
+        # Positioned strictly on the green grass outside the red restricted area using krakenprime/app.py coordinates
         self.sides_geometry = {
             "TOP_LEFT": [
-                (0.08, 0.40), (0.14, 0.35), (0.20, 0.30), (0.26, 0.25),
-                (0.32, 0.20), (0.38, 0.14)
+                (0.17, 0.22), (0.20, 0.19), (0.24, 0.16), (0.27, 0.13),
+                (0.31, 0.09), (0.34, 0.06)
             ],
             "TOP_RIGHT": [
-                (0.62, 0.14), (0.68, 0.20), (0.74, 0.25), (0.80, 0.30),
-                (0.86, 0.35), (0.92, 0.40)
+                (0.66, 0.06), (0.69, 0.09), (0.73, 0.13), (0.76, 0.16),
+                (0.80, 0.19), (0.83, 0.22)
             ],
             "BOTTOM_RIGHT": [
-                (0.92, 0.60), (0.86, 0.65), (0.80, 0.70), (0.74, 0.75),
-                (0.68, 0.80), (0.62, 0.86)
+                (0.83, 0.78), (0.80, 0.81), (0.76, 0.84), (0.73, 0.87),
+                (0.69, 0.91), (0.66, 0.94)
             ],
             "BOTTOM_LEFT": [
-                (0.38, 0.86), (0.32, 0.80), (0.26, 0.75), (0.20, 0.70),
-                (0.14, 0.65), (0.08, 0.60)
+                (0.34, 0.94), (0.31, 0.91), (0.27, 0.87), (0.24, 0.84),
+                (0.20, 0.81), (0.17, 0.78)
             ],
         }
 
@@ -99,6 +99,24 @@ class PredeterminedAttacker:
             return (int(val[0]), int(val[1]), default_count)
         return None
 
+    def _load_saved_deploy_points(self) -> Optional[List[Tuple[int, int]]]:
+        """
+        Load user-saved deployment points from 'deploy_points.json' (created by src/deploy_overlay.py).
+        If deploy_points.json exists, returns a list of pixel (X, Y) tap coordinates.
+        """
+        import json
+        if os.path.exists("deploy_points.json"):
+            try:
+                with open("deploy_points.json", "r") as f:
+                    data = json.load(f)
+                pts = [(int(pt["x"]), int(pt["y"])) for pt in data.get("points", data.get("slots", []))]
+                if pts:
+                    print(f"[INFO] Loaded {len(pts)} custom deployment points from 'deploy_points.json'!")
+                    return pts
+            except Exception as e:
+                print(f"[WARN] Could not parse 'deploy_points.json': {e}")
+        return None
+
     def zoom_out_base(self) -> None:
         """Perform pinch-out/zoom-out motion so the entire base is visible before deploying."""
         if hasattr(self.controller, "zoom_out"):
@@ -107,7 +125,7 @@ class PredeterminedAttacker:
     def _deploy_card_until_greyed_out(self, card_name: str, army_map: Dict[str, Any], target_sides: List[str]) -> bool:
         """
         Taps the card icon to select it, then repeatedly taps along the outermost grass border
-        of target_sides UNTIL the card icon is greyed out (fully deployed / out of units).
+        of target_sides (or custom points from deploy_points.json) UNTIL the card icon is greyed out.
         """
         info = self._get_card_info(army_map, card_name, default_count=24)
         if not info:
@@ -121,13 +139,21 @@ class PredeterminedAttacker:
         tapped_total = 0
         max_taps = max(40, initial_count + 15)  # Guard against infinite loop
 
+        saved_pts = self._load_saved_deploy_points()
+
         while tapped_total < max_taps:
-            for side_name in target_sides:
-                points = self.sides_geometry[side_name]
-                pt = points[(tapped_total // max(1, len(target_sides))) % len(points)]
-                self.tap_normalized(pt[0], pt[1])
-                tapped_total += 1
-                time.sleep(0.04)
+            if saved_pts:
+                for pt in saved_pts:
+                    self.tap_screen(pt[0], pt[1])
+                    tapped_total += 1
+                    time.sleep(0.04)
+            else:
+                for side_name in target_sides:
+                    points = self.sides_geometry[side_name]
+                    pt = points[(tapped_total // max(1, len(target_sides))) % len(points)]
+                    self.tap_normalized(pt[0], pt[1])
+                    tapped_total += 1
+                    time.sleep(0.04)
 
             # Check if card has become empty / greyed out (all units deployed)
             if tapped_total % 4 == 0 or tapped_total >= initial_count:

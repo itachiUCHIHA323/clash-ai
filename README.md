@@ -72,7 +72,12 @@ When inspecting an enemy base in scout mode, the Available Loot is located in th
 ### 3. Real-Scanning Troop Count Badges (`read_troop_count`) & Dynamic Army Discovery (`scan_available_army`)
 Before deploying an attack, `CardScanner.scan_available_army(frame)` scans your entire bottom deployment bar:
 - **True Troop Count Recognition**: Crops the number badge directly above each card (`Y = card_y - 32 to card_y - 5`, `X = card_x - 18 to card_x + 18`) and reads the exact remaining troop count (e.g., `28` Valkyries, `8` Dragons).
-- **Dynamic Outer Edge Deployment (`0.08 to 0.92` Margin)**: Positioned along the absolute outer 8% safe grass margin, physically outside the red restricted zone even on maxed TH16 bases.
+- **Interactive Visual Deploy Overlay (`deploy_overlay.py` from `krakenprime`)**:
+  ```bash
+  python -m src.test_bot --mode deploy-overlay
+  ```
+  Opens an interactive graphical overlay showing your emulator screen. You can click anywhere on your screen to set your exact safe deployment points and save them to **`deploy_points.json`**.
+- **Dynamic Outer Edge & Custom Preset Deployment**: If `deploy_points.json` exists, `PredeterminedAttacker` taps your exact saved points. Otherwise, it defaults to our 8% safe grass margin (`0.08 to 0.92`).
 - **Count Badge Existence Checking (`is_card_empty`)**: Continuously taps along the safe outer grass border and checks whether the white number badge above the card disappeared (`white_pixel_count < 12`), guaranteeing the card is tapped until every single unit is deployed.
 
 ### 3. Integrated Asset & Template Library (From `CoC-ai-gud`)
