@@ -82,17 +82,17 @@ This outputs a clean ASCII coordinate table and saves **`debug_calibration_1280x
 ### 3. Launch an Attack on BlueStacks 5
 Run a predetermined attack directly from the command line:
 ```bash
-# 1. Continuous Farming Loop (OCR Gold/Elixir >= 800k -> Pinch-Out -> Outermost Edge Deploy -> Return Home):
-python -m src.auto_farmer --troop VALKYRIE --min-gold 800000 --min-elixir 800000 --cycles 5 --adb-serial 127.0.0.1:5555
+# 1. State-Verified Continuous Farming Loop (800k loot -> Pinch-Out -> Outermost Edge Deploy -> Return Home):
+python -m src.auto_farmer --troop VALKYRIE --min-gold 800000 --min-elixir 800000 --cycles 5
 
 # 2. Automatic Lobby-to-Battle loop (uses attack.png, find.PNG, return.PNG, surrender.PNG):
-python -m src.test_bot --mode auto-lobby --troop EDRAGON --side BOTTOM_LEFT --adb-serial 127.0.0.1:5555
+python -m src.test_bot --mode auto-lobby --troop EDRAGON --side BOTTOM_LEFT
 
 # 3. Sneaky Goblin / Valkyrie Surround Attack across all 4 sides + 1 Hero per side:
-python -m src.test_bot --mode attack --troop SNEAKY_GOBLIN --adb-serial 127.0.0.1:5555
+python -m src.test_bot --mode attack --troop SNEAKY_GOBLIN
 
 # 4. Electro Dragon Line Sweep on BOTTOM_LEFT side + all 4 Heroes alongside:
-python -m src.test_bot --mode attack --troop EDRAGON --side BOTTOM_LEFT --adb-serial 127.0.0.1:5555
+python -m src.test_bot --mode attack --troop EDRAGON --side BOTTOM_LEFT
 ```
 
 ---

@@ -61,22 +61,31 @@ class LootReader:
         if PYTESSERACT_AVAILABLE:
             try:
                 gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
-                _, thresh = cv2.threshold(gray, 180, 255, cv2.THRESH_BINARY)
+                # Resize for sharper Tesseract OCR recognition
+                scaled = cv2.resize(gray, (0, 0), fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC)
+                _, thresh = cv2.threshold(scaled, 180, 255, cv2.THRESH_BINARY)
                 text = pytesseract.image_to_string(thresh, config="--psm 7 -c tessedit_char_whitelist=0123456789")
                 digits = re.sub(r"\D", "", text)
                 if digits:
-                    return int(digits)
+                    val = int(digits)
+                    print(f"[LOOT OCR] Parsed value '{val:,}' from ROI {roi}")
+                    return val
             except Exception as e:
                 print(f"[DEBUG] Tesseract OCR failed on loot ROI: {e}")
 
-        # Fallback for testing/offline: return simulated loot or high value if OCR is not installed
-        # In live automation without pytesseract, returns 850000 so the attack loop proceeds
-        return 850000
+        # Real verification: If OCR failed or is not installed, return 0 (never use fake/demo numbers!)
+        print(f"[LOOT OCR] Could not extract digits from ROI {roi}. Ensure pytesseract is installed.")
+        return 0
 
-    def is_loot_sufficient(self, loot_dict: Dict[str, int]) -> bool:
+    def is_loot_sufficient(self, loot_dict: Dict[str, int], force_attack: bool = False) -> bool:
         """
         Return True if both Gold and Elixir are >= the minimum thresholds (default: 800,000).
+        If force_attack is True, bypasses loot check for manual attack testing.
         """
+        if force_attack:
+            print("[LOOT CHECK] --force-attack enabled: Bypassing loot threshold verification.")
+            return True
+
         gold = loot_dict.get("gold", 0)
         elixir = loot_dict.get("elixir", 0)
         sufficient = gold >= self.min_gold and elixir >= self.min_elixir
