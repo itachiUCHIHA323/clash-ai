@@ -31,12 +31,14 @@ class AutoFarmer:
         adb_path: Optional[str] = None,
         min_gold: int = 800000,
         min_elixir: int = 800000,
+        force_attack: bool = False,
         use_adb: bool = True,
     ):
         self.adb_serial = adb_serial
         self.adb_path = adb_path
         self.min_gold = min_gold
         self.min_elixir = min_elixir
+        self.force_attack = force_attack
         self.use_adb = use_adb
 
         print("[AUTO-FARMER] Initializing Attacker, UI Matcher, and Loot OCR Scanner...")
@@ -123,7 +125,7 @@ class AutoFarmer:
         for skip_count in range(max_skips):
             frame = self.get_frame()
             loot = self.loot_reader.read_loot(frame)
-            if self.loot_reader.is_loot_sufficient(loot):
+            if self.loot_reader.is_loot_sufficient(loot, force_attack=self.force_attack):
                 print(f"[SUCCESS] Base #{skip_count + 1} meets loot threshold! Preparing attack...")
                 break
             else:
@@ -219,6 +221,7 @@ if __name__ == "__main__":
     parser.add_argument("--side", type=str, default="BOTTOM_LEFT", choices=["TOP_LEFT", "TOP_RIGHT", "BOTTOM_RIGHT", "BOTTOM_LEFT"], help="Side for line sweep")
     parser.add_argument("--min-gold", type=int, default=800000, help="Minimum Gold threshold (default: 800,000)")
     parser.add_argument("--min-elixir", type=int, default=800000, help="Minimum Elixir threshold (default: 800,000)")
+    parser.add_argument("--force-attack", action="store_true", help="Bypass loot OCR threshold check for manual attack testing")
     parser.add_argument("--cycles", type=int, default=5, help="Number of continuous farming attacks to run (default: 5)")
     parser.add_argument("--use-window", action="store_true", help="Use fast window capture instead of ADB")
 
@@ -228,6 +231,7 @@ if __name__ == "__main__":
         adb_path=args.adb_path,
         min_gold=args.min_gold,
         min_elixir=args.min_elixir,
+        force_attack=args.force_attack,
         use_adb=not args.use_window,
     )
     farmer.run_continuous(troop_type=args.troop, side=args.side, max_cycles=args.cycles)
