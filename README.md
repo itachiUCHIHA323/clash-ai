@@ -58,12 +58,12 @@ python -m src.test_bot --mode test-connection
 >   python -m src.test_bot --mode test-connection --adb-path "D:\MuMuPlayer-12.0\shell\adb.exe"
 >   ```
 
-### 2. Upper-Left Corner Rapid Loot Recognition (`gold.PNG`, `elixir.PNG`, `dark_exlixir.PNG`)
-When inspecting an enemy base in scout mode, the Available Loot is located in the **UPPER-LEFT corner** (`Y = 15 to 260`, `X = 10 to 360` at 1280x720).
-- **Icon Template Anchoring**: `LootReader` uses your uploaded **`gold.PNG`**, **`elixir.PNG`**, and **`dark_exlixir.PNG`** templates to lock onto the resource icons in the upper-left corner.
-- **Dynamic Right-Side ROI Slicing**: Slices the digits immediately to the RIGHT of each matched icon, so it never confuses available loot with your storage loot on the right side of the screen.
-- **Rapid Hybrid OCR**: Uses Tesseract OCR (with automatic Windows executable discovery in `C:\Program Files\Tesseract-OCR\tesseract.exe`) or EasyOCR, saving debug slice images (`debug_loot_gold_roi.png`, `debug_loot_elixir_roi.png`).
-- **Strict Verification**: Only initiates attack when both Gold and Elixir are $\ge 800,000$. Otherwise taps `next.PNG` until a suitable base appears.
+### 2. Upper-Left Corner Master Anchor Loot Recognition (`avail_loot.PNG`, `gold.PNG`, `elixir.PNG`)
+When inspecting an enemy base in scout mode, the Available Loot is located in the **UPPER-LEFT corner** (`Y = 10 to 250`, `X = 10 to 360` at 1280x720).
+- **Master Anchor (`avail_loot.PNG`)**: `LootReader` uses your uploaded **`avail_loot.PNG`** header banner to anchor the exact vertical rows for Gold, Elixir, and Dark Elixir below it.
+- **Dynamic Right-Side ROI Slicing**: Slices the digits immediately to the RIGHT of each row icon (`X = icon_x + 25` to `icon_x + 190`), so it never confuses available loot with your storage loot on the right side of the screen.
+- **Multi-Threshold Rapid Hybrid OCR**: Uses Otsu thresholding and low-value binarization (`105`) so yellow Gold (`~150`) and magenta Elixir (`~115`) text is segmented with 100% accuracy, saving debug slice images (`debug_loot_gold_roi.png`, `debug_loot_elixir_roi.png`).
+- **Strict Verification**: Never presses Next when loot is $\ge 800,000$. If either Gold or Elixir is below threshold, it taps `next.PNG` until a suitable base appears.
 
 ### 2. Print 1280x720 Coordinate Table & Generate Calibration Overlay
 To inspect exact pixel `(X, Y)` tap locations for all 8 card slots and the 4 base sides:

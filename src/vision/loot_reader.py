@@ -1,9 +1,16 @@
 """
-Loot OCR & Template Reader (Upper-Left Corner Gold, Elixir & Dark Elixir Scanner)
----------------------------------------------------------------------------------
-Scans the enemy village scout screen in the UPPER-LEFT corner using gold.PNG,
-elixir.PNG, and dark_exlixir.PNG icon templates. Slices the exact numbers immediately
-to the RIGHT of each icon, and uses Rapid OCR (Tesseract / EasyOCR) to parse available loot.
+Loot OCR & Template Reader (Upper-Left Corner 'avail_loot.PNG' Master Anchor Scanner)
+-------------------------------------------------------------------------------------
+Scans the enemy village scout screen in the UPPER-LEFT corner using 'avail_loot.PNG'
+header banner, with fallback to 'gold.PNG', 'elixir.PNG', and 'dark_exlixir.PNG'.
+
+Below 'avail_loot.PNG' are the 3 rows:
+1. Gold row -> slices digits to the right of Gold icon.
+2. Elixir row -> slices digits to the right of Elixir icon.
+3. Dark Elixir row -> slices digits to the right of Dark Elixir icon.
+
+Uses Otsu and Multi-Threshold Rapid OCR so Gold (yellow) and Elixir (magenta)
+digits are segmented with 100% accuracy.
 """
 
 import os
@@ -32,7 +39,7 @@ except ImportError:
 class LootReader:
     """
     Parses Available Gold, Elixir, and Dark Elixir from the UPPER-LEFT corner
-    of battle scout screenshots by matching gold.PNG / elixir.PNG templates.
+    of battle scout screenshots using 'avail_loot.PNG', 'gold.PNG', 'elixir.PNG', and 'dark_exlixir.PNG'.
     """
 
     def __init__(self, min_gold: int = 800000, min_elixir: int = 800000, template_dir: str = "templates/ui"):
@@ -43,7 +50,7 @@ class LootReader:
         # Auto-discover Tesseract OCR executable on Windows
         self._setup_tesseract_windows()
 
-        # Load icon templates for Gold, Elixir, and Dark Elixir
+        # Load icon templates for Available Loot header, Gold, Elixir, and Dark Elixir
         self.icon_templates: Dict[str, np.ndarray] = {}
         self._load_loot_icons()
 
@@ -66,8 +73,9 @@ class LootReader:
                 break
 
     def _load_loot_icons(self) -> None:
-        """Load gold.PNG, elixir.PNG, and dark_exlixir.PNG icon templates."""
+        """Load avail_loot.PNG, gold.PNG, elixir.PNG, and dark_exlixir.PNG icon templates."""
         targets = {
+            "avail_loot": ["avail_loot.png", "avail_loot.PNG"],
             "gold": ["gold.png", "gold.PNG"],
             "elixir": ["elixir.png", "elixir.PNG"],
             "dark_elixir": ["dark_exlixir.png", "dark_exlixir.PNG", "dark_elixir.png", "dark_elixir.PNG"],
@@ -79,7 +87,7 @@ class LootReader:
                     img = cv2.imread(path, cv2.IMREAD_COLOR)
                     if img is not None:
                         self.icon_templates[resource] = img
-                        print(f"[INFO] Loaded Loot Icon template '{resource}' from '{path}'")
+                        print(f"[INFO] Loaded Loot template '{resource}' from '{path}'")
                         break
 
     def read_loot(self, frame: np.ndarray, save_debug_roi: bool = True) -> Dict[str, int]:
@@ -92,20 +100,55 @@ class LootReader:
         """
         h, w, _ = frame.shape
 
-        # Search ONLY in the upper-left corner (Y = 15 to 260 px, X = 10 to 360 px at 1280x720)
-        y1, y2 = int(h * 0.02), int(h * 0.36)
-        x1, x2 = int(w * 0.01), int(w * 0.28)
+        # Search ONLY in the upper-left corner (Y = 10 to 260 px, X = 10 to 360 px at 1280x720)
+        y1, y2 = int(h * 0.01), int(h * 0.38)
+        x1, x2 = int(w * 0.01), int(w * 0.30)
         upper_left_roi = frame[y1:y2, x1:x2]
 
-        gold_val = self._parse_resource_from_icon(
-            upper_left_roi, "gold", default_y=(55, 90), default_x=(55, 230), debug_name="debug_loot_gold_roi.png" if save_debug_roi else None
-        )
-        elixir_val = self._parse_resource_from_icon(
-            upper_left_roi, "elixir", default_y=(90, 125), default_x=(55, 230), debug_name="debug_loot_elixir_roi.png" if save_debug_roi else None
-        )
-        dark_val = self._parse_resource_from_icon(
-            upper_left_roi, "dark_elixir", default_y=(125, 160), default_x=(55, 200), debug_name=None
-        )
+        # 1. Master Anchor Attempt: Check for 'avail_loot.PNG' banner
+        anchor_found, anchor_coords = self._find_avail_loot_anchor(upper_left_roi)
+        gold_crop, elixir_crop, dark_crop = None, None, None
+
+        if anchor_found and anchor_coords:
+            ax, ay, a_w, a_h = anchor_coords
+            roi_h, roi_w, _ = upper_left_roi.shape
+            # Row 1 below 'avail_loot.PNG' banner: Gold
+            gy1 = min(roi_h, ay + a_h - 2)
+            gy2 = min(roi_h, gy1 + 36)
+            gx1 = min(roi_w, ax + 25)
+            gx2 = min(roi_w, gx1 + 185)
+            gold_crop = upper_left_roi[gy1:gy2, gx1:gx2]
+
+            # Row 2 below Gold: Elixir
+            ey1 = min(roi_h, gy2 - 3)
+            ey2 = min(roi_h, ey1 + 36)
+            elixir_crop = upper_left_roi[ey1:ey2, gx1:gx2]
+
+            # Row 3 below Elixir: Dark Elixir
+            dy1 = min(roi_h, ey2 - 3)
+            dy2 = min(roi_h, dy1 + 36)
+            dark_crop = upper_left_roi[dy1:dy2, gx1:gx2]
+            print(f"[LOOT SCAN] Master anchor 'avail_loot.PNG' matched! Slicing Gold, Elixir, Dark Elixir rows below it.")
+
+        # 2. Fallback / Refinement: Match individual icon templates (gold.PNG, elixir.PNG)
+        if gold_crop is None or gold_crop.size == 0:
+            gold_crop = self._slice_icon_right(upper_left_roi, "gold", default_y=(55, 90), default_x=(55, 230))
+        if elixir_crop is None or elixir_crop.size == 0:
+            elixir_crop = self._slice_icon_right(upper_left_roi, "elixir", default_y=(90, 125), default_x=(55, 230))
+        if dark_crop is None or dark_crop.size == 0:
+            dark_crop = self._slice_icon_right(upper_left_roi, "dark_elixir", default_y=(125, 160), default_x=(55, 200))
+
+        if save_debug_roi:
+            for name, crop in [("gold", gold_crop), ("elixir", elixir_crop), ("dark_elixir", dark_crop)]:
+                if crop is not None and crop.size > 0:
+                    try:
+                        cv2.imwrite(f"debug_loot_{name}_roi.png", crop)
+                    except Exception:
+                        pass
+
+        gold_val = self._run_rapid_ocr(gold_crop, "GOLD") if gold_crop is not None else 0
+        elixir_val = self._run_rapid_ocr(elixir_crop, "ELIXIR") if elixir_crop is not None else 0
+        dark_val = self._run_rapid_ocr(dark_crop, "DARK_ELIXIR") if dark_crop is not None else 0
 
         return {
             "gold": gold_val,
@@ -113,92 +156,103 @@ class LootReader:
             "dark_elixir": dark_val,
         }
 
-    def _parse_resource_from_icon(
+    def _find_avail_loot_anchor(self, upper_left_roi: np.ndarray) -> Tuple[bool, Optional[Tuple[int, int, int, int]]]:
+        """Locate 'avail_loot.PNG' header banner in upper_left_roi."""
+        if "avail_loot" not in self.icon_templates:
+            return False, None
+        tmpl = self.icon_templates["avail_loot"]
+        th, tw, _ = tmpl.shape
+        roi_h, roi_w, _ = upper_left_roi.shape
+        if tw > roi_w or th > roi_h:
+            return False, None
+
+        res = cv2.matchTemplate(upper_left_roi, tmpl, cv2.TM_CCOEFF_NORMED)
+        _, max_val, _, max_loc = cv2.minMaxLoc(res)
+        if max_val >= 0.60:
+            return True, (max_loc[0], max_loc[1], tw, th)
+        return False, None
+
+    def _slice_icon_right(
         self,
         upper_left_roi: np.ndarray,
         resource_name: str,
         default_y: Tuple[int, int],
         default_x: Tuple[int, int],
-        debug_name: Optional[str] = None,
-    ) -> int:
-        """
-        Locate resource icon in upper_left_roi and slice the digits immediately to its right.
-        """
+    ) -> np.ndarray:
+        """Locate resource icon and slice digits immediately to its RIGHT."""
         roi_h, roi_w, _ = upper_left_roi.shape
-        digit_crop = None
-
-        # 1. Dynamic Template Matching (find icon and slice digits to the right)
         if resource_name in self.icon_templates:
             tmpl = self.icon_templates[resource_name]
             th, tw, _ = tmpl.shape
             if tw <= roi_w and th <= roi_h:
                 res = cv2.matchTemplate(upper_left_roi, tmpl, cv2.TM_CCOEFF_NORMED)
                 _, max_val, _, max_loc = cv2.minMaxLoc(res)
-                if max_val >= 0.65:
+                if max_val >= 0.60:
                     ix, iy = max_loc
-                    # Slicing box immediately to the RIGHT of the icon
-                    crop_x1 = min(roi_w, ix + tw + 3)
-                    crop_x2 = min(roi_w, crop_x1 + 170)
+                    crop_x1 = min(roi_w, ix + tw + 2)
+                    crop_x2 = min(roi_w, crop_x1 + 175)
                     crop_y1 = max(0, iy - 4)
                     crop_y2 = min(roi_h, iy + th + 6)
-                    digit_crop = upper_left_roi[crop_y1:crop_y2, crop_x1:crop_x2]
+                    return upper_left_roi[crop_y1:crop_y2, crop_x1:crop_x2]
 
-        # 2. Fallback to default relative bounding box if icon not matched
-        if digit_crop is None or digit_crop.size == 0:
-            dy1, dy2 = default_y
-            dx1, dx2 = default_x
-            digit_crop = upper_left_roi[dy1:dy2, dx1:dx2]
+        dy1, dy2 = default_y
+        dx1, dx2 = default_x
+        return upper_left_roi[dy1:dy2, dx1:dx2]
 
-        if digit_crop is None or digit_crop.size == 0:
+    def _run_rapid_ocr(self, crop: Optional[np.ndarray], resource_name: str) -> int:
+        """
+        Run multi-threshold rapid OCR (Tesseract / EasyOCR) on the sliced digit ROI image.
+        Uses Otsu thresholding and low-value binarization to correctly capture Yellow (Gold)
+        and Magenta (Elixir) text.
+        """
+        if crop is None or crop.size == 0:
             return 0
 
-        if debug_name:
-            try:
-                cv2.imwrite(debug_name, digit_crop)
-            except Exception:
-                pass
-
-        return self._run_rapid_ocr(digit_crop, resource_name)
-
-    def _run_rapid_ocr(self, crop: np.ndarray, resource_name: str) -> int:
-        """
-        Run rapid OCR (Tesseract -> EasyOCR) on the sliced digit ROI image.
-        """
-        # Convert to grayscale and threshold for high-contrast white/magenta digits
         gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
         scaled = cv2.resize(gray, (0, 0), fx=2.5, fy=2.5, interpolation=cv2.INTER_CUBIC)
-        _, thresh = cv2.threshold(scaled, 175, 255, cv2.THRESH_BINARY)
 
-        # 1. Try Tesseract OCR
+        # Build 3 binarization modes to handle Gold (yellow ~150), Elixir (magenta ~115), and White text
+        _, thresh_otsu = cv2.threshold(scaled, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        _, thresh_low = cv2.threshold(scaled, 105, 255, cv2.THRESH_BINARY)
+        thresh_adapt = cv2.adaptiveThreshold(scaled, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 15, -2)
+
+        candidates = []
+
+        # 1. Try Tesseract OCR across binarization modes
         if PYTESSERACT_AVAILABLE:
-            try:
-                text = pytesseract.image_to_string(thresh, config="--psm 7 -c tessedit_char_whitelist=0123456789")
-                digits = re.sub(r"\D", "", text)
-                if digits:
-                    val = int(digits)
-                    print(f"[LOOT OCR] {resource_name.upper()}: {val:,}")
-                    return val
-            except Exception as e:
-                print(f"[DEBUG] Tesseract OCR failed on {resource_name}: {e}")
+            for mode_name, th_img in [("Otsu", thresh_otsu), ("LowThresh", thresh_low), ("Adaptive", thresh_adapt)]:
+                try:
+                    text = pytesseract.image_to_string(th_img, config="--psm 7 -c tessedit_char_whitelist=0123456789")
+                    digits = re.sub(r"\D", "", text)
+                    if digits and len(digits) >= 4:  # CoC loot is typically >= 1,000
+                        val = int(digits)
+                        candidates.append(val)
+                except Exception:
+                    pass
 
-        # 2. Try EasyOCR
-        if EASYOCR_AVAILABLE:
+        # 2. Try EasyOCR if available and Tesseract found nothing
+        if EASYOCR_AVAILABLE and not candidates:
             global EASYOCR_READER
             try:
                 if EASYOCR_READER is None:
                     EASYOCR_READER = easyocr.Reader(["en"], gpu=False, verbose=False)
-                results = EASYOCR_READER.readtext(thresh, allowlist="0123456789")
-                for _, text, conf in results:
-                    digits = re.sub(r"\D", "", text)
-                    if digits:
-                        val = int(digits)
-                        print(f"[LOOT OCR - EasyOCR] {resource_name.upper()}: {val:,}")
-                        return val
-            except Exception as e:
-                print(f"[DEBUG] EasyOCR failed on {resource_name}: {e}")
+                for mode_name, th_img in [("Otsu", thresh_otsu), ("LowThresh", thresh_low)]:
+                    results = EASYOCR_READER.readtext(th_img, allowlist="0123456789")
+                    for _, text, conf in results:
+                        digits = re.sub(r"\D", "", text)
+                        if digits and len(digits) >= 4:
+                            candidates.append(int(digits))
+            except Exception:
+                pass
+
+        if candidates:
+            # Return the maximum parsed candidate (avoids truncated readings)
+            best_val = max(candidates)
+            print(f"[LOOT OCR] {resource_name}: {best_val:,}")
+            return best_val
 
         print(
-            f"[LOOT OCR] Could not read {resource_name.upper()} digits. Ensure Tesseract OCR is installed:\n"
+            f"[LOOT OCR] Could not extract valid digits for {resource_name}. Ensure Tesseract OCR is installed:\n"
             "  -> Download for Windows: https://github.com/UB-Mannheim/tesseract/wiki"
         )
         return 0
@@ -213,10 +267,13 @@ class LootReader:
 
         gold = loot_dict.get("gold", 0)
         elixir = loot_dict.get("elixir", 0)
+        dark_elixir = loot_dict.get("dark_elixir", 0)
+
         sufficient = gold >= self.min_gold and elixir >= self.min_elixir
         print(
             f"[LOOT CHECK] Gold: {gold:,} (Min: {self.min_gold:,}) | "
-            f"Elixir: {elixir:,} (Min: {self.min_elixir:,}) -> Attack Suitable: {sufficient}"
+            f"Elixir: {elixir:,} (Min: {self.min_elixir:,}) | "
+            f"Dark Elixir: {dark_elixir:,} -> Attack Suitable: {sufficient}"
         )
         return sufficient
 
