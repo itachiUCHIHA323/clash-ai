@@ -11,7 +11,7 @@ import os
 import time
 import cv2
 import numpy as np
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional, Any
 from src.controller.adb_controller import ADBController
 from src.vision.card_scanner import CardScanner
 
