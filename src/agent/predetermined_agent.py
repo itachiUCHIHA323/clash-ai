@@ -139,7 +139,24 @@ class PredeterminedAttacker:
         else:
             print("[ZOOM OUT] Active controller does not support zoom_out(). Skipping.")
 
-    def execute_surround_attack(self, troop_type: str, army_map: Dict[str, Dict[str, Any]]) -> None:
+    def _get_card_info(self, map_data: Dict[str, Any], card_name: str, default_count: int = 28) -> Optional[Tuple[int, int, int]]:
+        """
+        Safely extract (x, y, count) for a card whether map_data is an army_map (dicts)
+        or a simple card_map (tuples).
+        """
+        if card_name not in map_data:
+            return None
+
+        val = map_data[card_name]
+        if isinstance(val, dict):
+            pos = val.get("pos", (0, 0))
+            count = val.get("count", default_count)
+            return (int(pos[0]), int(pos[1]), int(count))
+        elif isinstance(val, (tuple, list)) and len(val) >= 2:
+            return (int(val[0]), int(val[1]), default_count)
+        return None
+
+    def execute_surround_attack(self, troop_type: str, army_map: Dict[str, Any]) -> None:
         """
         Surround Deployment (Valkyries / Sneaky Goblins):
         1. Zoom out base view using pinch-out motion.
@@ -150,10 +167,10 @@ class PredeterminedAttacker:
         self.zoom_out_base()
 
         # Step 1: Deploy troops across all 4 sides along the outermost green edge
-        if troop_type in army_map:
-            cx, cy = army_map[troop_type]["pos"]
-            real_count = army_map[troop_type]["count"]
-            print(f"  -> Selecting '{troop_type}' at { (cx, cy) } (Real remaining count: {real_count})")
+        info = self._get_card_info(army_map, troop_type, default_count=28)
+        if info:
+            cx, cy, real_count = info
+            print(f"  -> Selecting '{troop_type}' at {(cx, cy)} (Real remaining count: {real_count})")
             self.tap_screen(cx, cy)
             time.sleep(0.06)
 
@@ -178,8 +195,9 @@ class PredeterminedAttacker:
         }
 
         for hero_name, assigned_side in hero_side_mapping.items():
-            if hero_name in army_map:
-                cx, cy = army_map[hero_name]["pos"]
+            h_info = self._get_card_info(army_map, hero_name, default_count=1)
+            if h_info:
+                cx, cy, _ = h_info
                 print(f"  -> Selecting Hero '{hero_name}' at {(cx, cy)}")
                 self.tap_screen(cx, cy)
                 time.sleep(0.06)
@@ -189,7 +207,7 @@ class PredeterminedAttacker:
                 self.tap_normalized(midpoint[0], midpoint[1])
                 time.sleep(0.2)
 
-    def execute_line_sweep_attack(self, troop_type: str, side: str, army_map: Dict[str, Dict[str, Any]]) -> None:
+    def execute_line_sweep_attack(self, troop_type: str, side: str, army_map: Dict[str, Any]) -> None:
         """
         Line Sweep Deployment (Dragons / Electro Dragons):
         1. Zoom out base view using pinch-out motion.
@@ -205,9 +223,9 @@ class PredeterminedAttacker:
         points = self.sides_geometry[side]
 
         # Step 1: Sweep all Dragons / E-Drags along the selected side
-        if troop_type in army_map:
-            cx, cy = army_map[troop_type]["pos"]
-            real_count = army_map[troop_type]["count"]
+        info = self._get_card_info(army_map, troop_type, default_count=8)
+        if info:
+            cx, cy, real_count = info
             print(f"  -> Selecting '{troop_type}' at {(cx, cy)} (Real remaining count: {real_count})")
             self.tap_screen(cx, cy)
             time.sleep(0.06)
@@ -223,8 +241,9 @@ class PredeterminedAttacker:
         print(f"[LINE SWEEP ATTACK] Deploying ALL available HEROES alongside {troop_type} on side: {side}...")
         heroes = ["KING", "QUEEN", "WARDEN", "CHAMPION"]
         for i, hero_name in enumerate(heroes):
-            if hero_name in army_map:
-                cx, cy = army_map[hero_name]["pos"]
+            h_info = self._get_card_info(army_map, hero_name, default_count=1)
+            if h_info:
+                cx, cy, _ = h_info
                 print(f"  -> Selecting Hero '{hero_name}' at {(cx, cy)}")
                 self.tap_screen(cx, cy)
                 time.sleep(0.06)

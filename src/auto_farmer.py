@@ -147,16 +147,16 @@ class AutoFarmer:
 
         # Step 7: Execute Edge Deployment based on troop_type
         print(f"[STEP 7] Executing Outermost Edge Deployment for '{troop_type}'...")
-        card_map = self.attacker.scan_battle_cards()
-        print(f"  -> Scanned Card Map from deployment bar: {list(card_map.keys())}")
+        army_map = self.attacker.card_scanner.scan_available_army(frame)
+        print(f"  -> Discovered Available Army from deployment bar: {list(army_map.keys())}")
 
         if troop_type in ["VALKYRIE", "SNEAKY_GOBLIN"]:
-            self.attacker.execute_surround_attack(troop_type, card_map)
+            self.attacker.execute_surround_attack(troop_type, army_map)
         elif troop_type in ["DRAGON", "EDRAGON"]:
-            self.attacker.execute_line_sweep_attack(troop_type, side, card_map)
+            self.attacker.execute_line_sweep_attack(troop_type, side, army_map)
         else:
             print(f"[WARN] Unknown troop type '{troop_type}'. Using surround deployment.")
-            self.attacker.execute_surround_attack(troop_type, card_map)
+            self.attacker.execute_surround_attack(troop_type, army_map)
 
         # Step 8: Battle Monitoring & Return Home Loop
         print("[STEP 8] Attack deployed! Monitoring battle and scanning for 'Return Home' (return.PNG)...")
