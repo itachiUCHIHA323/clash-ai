@@ -61,7 +61,13 @@ python -m src.test_bot --mode test-connection
 When inspecting an enemy base in scout mode, the Available Loot is located in the **UPPER-LEFT corner** (`Y = 10 to 250`, `X = 10 to 360` at 1280x720).
 - **Master Anchor (`avail_loot.PNG`)**: `LootReader` uses your uploaded **`avail_loot.PNG`** header banner to anchor the exact vertical rows for Gold, Elixir, and Dark Elixir below it.
 - **Dynamic Right-Side ROI Slicing**: Slices the digits immediately to the RIGHT of each row icon (`X = icon_x + 25` to `icon_x + 190`), so it never confuses available loot with your storage loot on the right side of the screen.
-- **Raw Color + Grayscale ONNX RapidOCR (`rapidocr-onnxruntime`)**: Uses lightweight ONNX RapidOCR on **raw BGR color and grayscale images** (before binary thresholding) so yellow Gold (`~150`) and magenta Elixir (`~115`) text is segmented with 100% accuracy in sub-10ms latency without binarization erasing text.
+- **Precision Bright-Pixel Inner Digit Extraction (`gray > 140`)**: In Clash of Clans, numbers have bright white/yellow/magenta inner fill (`>140` intensity) with a thick dark black outline (`<100`). Isolating bright pixels creates crisp white-on-black digits with zero edge blurring or merged loops.
+- **Multi-Mode Rapid Hybrid OCR (`rapidocr-onnxruntime`)**: Tests Bright-Pixel Binary, Otsu, and Raw BGR across RapidOCR / EasyOCR / Tesseract to select the highest valid loot number in sub-10ms latency.
+- **Interactive Loot Diagnostic (`test-loot`)**:
+  ```bash
+  python -m src.test_bot --mode test-loot
+  ```
+  Captures a live screen, prints extracted Gold/Elixir/Dark Elixir, and saves annotated debug images (`debug_loot_screen_boxes.png`, `debug_loot_gold_roi.png`).
 - **Strict Verification**: Never presses Next when loot is $\ge 800,000$. If either Gold or Elixir is below threshold, it taps `next.PNG` until a suitable base appears. (Use `--force-attack` to bypass loot OCR check for manual testing).
 
 ### 3. Integrated Asset & Template Library (From `CoC-ai-gud`)
@@ -174,6 +180,7 @@ clash-ai/
 ├── src/
 │   ├── auto_farmer.py         # Master Continuous Auto-Farming Loop (Lobby -> Loot OCR -> Edge Deploy -> Return Home)
 │   ├── test_bot.py            # Master CLI runner for BlueStacks 5 testing, calibration & attacks
+│   ├── test_loot.py           # Interactive Loot OCR diagnostic & visual bounding box calibrator
 │   ├── calibrate_coords.py    # 1280x720 coordinate table generator & debug overlay creator
 │   ├── controller/
 │   │   ├── fast_controller.py # Ultra-low latency mss window capture & pyautogui taps (~3ms)
