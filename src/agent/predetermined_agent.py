@@ -112,13 +112,20 @@ class PredeterminedAttacker:
         print(f"   Predetermined Attack Engine - Troop: {troop_type}")
         print(f"=======================================================")
 
-        card_map = self.scan_battle_cards()
-        print(f"[INFO] Scanned Deployment Card Map: {list(card_map.keys())}")
+        frame = (
+            self.controller.get_screenshot_fast()
+            if self.use_fast_pipeline
+            else self.controller.get_screenshot()
+        )
+        army_map = self.card_scanner.scan_available_army(frame)
+        print(f"[ARMY DISCOVERY] Live Available Army & Real Counts:")
+        for name, info in army_map.items():
+            print(f"  -> Card: {name:<14} | Count: {info['count']:<3} | Coordinates: {info['pos']}")
 
         if troop_type in ["SNEAKY_GOBLIN", "VALKYRIE"]:
-            self.execute_surround_attack(troop_type, card_map)
+            self.execute_surround_attack(troop_type, army_map)
         elif troop_type in ["DRAGON", "EDRAGON"]:
-            self.execute_line_sweep_attack(troop_type, side, card_map)
+            self.execute_line_sweep_attack(troop_type, side, army_map)
         else:
             raise ValueError(f"Unsupported troop_type: {troop_type}")
 
@@ -132,30 +139,37 @@ class PredeterminedAttacker:
         else:
             print("[ZOOM OUT] Active controller does not support zoom_out(). Skipping.")
 
-    def execute_surround_attack(self, troop_type: str, card_map: Dict[str, Tuple[int, int]]) -> None:
+    def execute_surround_attack(self, troop_type: str, army_map: Dict[str, Dict[str, Any]]) -> None:
         """
         Surround Deployment (Valkyries / Sneaky Goblins):
         1. Zoom out base view using pinch-out motion.
-        2. Deploy troops evenly across ALL 4 SIDES of the base along the outermost green edge.
-        3. Deploy 4 Heroes (King, Queen, Warden, Champion) — ONE on EACH of the 4 sides.
+        2. Read real available count from army_map. Deploy troops evenly across ALL 4 SIDES along the outermost edge.
+        3. Deploy available Heroes (King, Queen, Warden, Champion) — ONE on EACH of the 4 sides.
         """
         print(f"[SURROUND ATTACK] Zooming out base & deploying '{troop_type}' on ALL 4 SIDES along outermost edge...")
         self.zoom_out_base()
 
         # Step 1: Deploy troops across all 4 sides along the outermost green edge
-        if self.select_card_by_name(troop_type, card_map):
+        if troop_type in army_map:
+            cx, cy = army_map[troop_type]["pos"]
+            real_count = army_map[troop_type]["count"]
+            print(f"  -> Selecting '{troop_type}' at { (cx, cy) } (Real remaining count: {real_count})")
+            self.tap_screen(cx, cy)
+            time.sleep(0.06)
+
+            # Divide real_count across 4 sides (at least 2 passes per side)
+            taps_per_side = max(4, (real_count // 4) + 1)
             for side_name, points in self.sides_geometry.items():
-                print(f"  -> Deploying {troop_type} wave along outermost edge of side: {side_name}")
-                # Deploy 8 taps per side (32 total taps) so any army count up to ~30-40 units is fully deployed
-                for _ in range(2):
-                    for nx, ny in points:
-                        self.tap_normalized(nx, ny)
-                        time.sleep(0.04)
+                print(f"  -> Deploying {taps_per_side} units of {troop_type} along outermost edge of side: {side_name}")
+                for i in range(taps_per_side):
+                    pt = points[i % len(points)]
+                    self.tap_normalized(pt[0], pt[1])
+                    time.sleep(0.04)
 
         time.sleep(0.5)
 
-        # Step 2: Deploy 1 Hero on EACH side
-        print("[SURROUND ATTACK] Deploying 4 Heroes — ONE on EACH of the 4 sides...")
+        # Step 2: Deploy 1 Hero on EACH side (only heroes present in army_map)
+        print("[SURROUND ATTACK] Deploying available Heroes — ONE on EACH of the 4 sides...")
         hero_side_mapping = {
             "KING": "TOP_LEFT",
             "QUEEN": "TOP_RIGHT",
@@ -164,19 +178,23 @@ class PredeterminedAttacker:
         }
 
         for hero_name, assigned_side in hero_side_mapping.items():
-            if self.select_card_by_name(hero_name, card_map):
+            if hero_name in army_map:
+                cx, cy = army_map[hero_name]["pos"]
+                print(f"  -> Selecting Hero '{hero_name}' at {(cx, cy)}")
+                self.tap_screen(cx, cy)
+                time.sleep(0.06)
                 points = self.sides_geometry[assigned_side]
                 midpoint = points[len(points) // 2]
-                print(f"  -> Deploying Hero '{hero_name}' on {assigned_side} at {midpoint}")
+                print(f"     Deploying Hero '{hero_name}' on {assigned_side} at {midpoint}")
                 self.tap_normalized(midpoint[0], midpoint[1])
                 time.sleep(0.2)
 
-    def execute_line_sweep_attack(self, troop_type: str, side: str, card_map: Dict[str, Tuple[int, int]]) -> None:
+    def execute_line_sweep_attack(self, troop_type: str, side: str, army_map: Dict[str, Dict[str, Any]]) -> None:
         """
         Line Sweep Deployment (Dragons / Electro Dragons):
         1. Zoom out base view using pinch-out motion.
-        2. Deploy all Dragons / E-Drags along ANY SINGLE selected side of the base along the outermost green edge.
-        3. Deploy ALL 4 Heroes alongside the dragons on that EXACT same side.
+        2. Read real available count from army_map. Deploy all Dragons / E-Drags along ONE selected side.
+        3. Deploy ALL available Heroes alongside the dragons on that EXACT same side.
         """
         side = side.upper()
         if side not in self.sides_geometry:
@@ -187,21 +205,31 @@ class PredeterminedAttacker:
         points = self.sides_geometry[side]
 
         # Step 1: Sweep all Dragons / E-Drags along the selected side
-        if self.select_card_by_name(troop_type, card_map):
-            for _ in range(3):  # 3 passes along the line to deploy full air army
-                for nx, ny in points:
-                    self.tap_normalized(nx, ny)
-                    time.sleep(0.06)
+        if troop_type in army_map:
+            cx, cy = army_map[troop_type]["pos"]
+            real_count = army_map[troop_type]["count"]
+            print(f"  -> Selecting '{troop_type}' at {(cx, cy)} (Real remaining count: {real_count})")
+            self.tap_screen(cx, cy)
+            time.sleep(0.06)
+
+            for i in range(max(6, real_count)):
+                pt = points[i % len(points)]
+                self.tap_normalized(pt[0], pt[1])
+                time.sleep(0.06)
 
         time.sleep(0.5)
 
-        # Step 2: Deploy all 4 Heroes alongside the dragons on the SAME side
-        print(f"[LINE SWEEP ATTACK] Deploying ALL 4 HEROES alongside {troop_type} on side: {side}...")
+        # Step 2: Deploy all available Heroes alongside the dragons on the SAME side
+        print(f"[LINE SWEEP ATTACK] Deploying ALL available HEROES alongside {troop_type} on side: {side}...")
         heroes = ["KING", "QUEEN", "WARDEN", "CHAMPION"]
         for i, hero_name in enumerate(heroes):
-            if self.select_card_by_name(hero_name, card_map):
+            if hero_name in army_map:
+                cx, cy = army_map[hero_name]["pos"]
+                print(f"  -> Selecting Hero '{hero_name}' at {(cx, cy)}")
+                self.tap_screen(cx, cy)
+                time.sleep(0.06)
                 pt = points[i % len(points)]
-                print(f"  -> Deploying Hero '{hero_name}' at {pt} on {side}")
+                print(f"     Deploying Hero '{hero_name}' at {pt} on {side}")
                 self.tap_normalized(pt[0], pt[1])
                 time.sleep(0.25)
 
