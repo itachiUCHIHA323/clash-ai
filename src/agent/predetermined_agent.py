@@ -1,13 +1,12 @@
 """
-Predetermined Attacking Agent (Advanced 4-Step Tactical Deployment Engine)
--------------------------------------------------------------------------
+Predetermined Attacking Engine (Precision Greyed-Out Deployment & Outermost Border Geometry)
+-----------------------------------------------------------------------------------------
 Automates specialized deployment strategies with strict 4-Step Tactical Execution:
-1. STEP 1 (Troops First - ALL OF THEM): Deploys all available troops along the outermost
-   green grass border to guarantee zero "cannot deploy here" red zone errors.
-2. STEP 2 (Then Heroes): Deploys all available Heroes (King, Queen, Warden, Champion)
-   AFTER all troops have been dropped.
+1. STEP 1 (Troops First - ALL OF THEM): Selects troop cards and taps along the absolute
+   outermost grass border (margin 10-12%) UNTIL THE CARD IS GREYED OUT (fully deployed).
+2. STEP 2 (Then Heroes): Selects Hero cards after all troops are greyed out.
 3. STEP 3 (Spells A BIT AHEAD - NOT AT BACK): Deploys Rage / Support spells slightly INWARD
-   toward the center of the base (~15-20% ahead of the troop drop line), placing the spell
+   toward the center of the base (~18% ahead of the troop drop line), placing the spell
    circle right where troops walk into enemy defenses.
 4. STEP 4 (Hero Ability Activation): Waits ~7 seconds after hero deployment and taps all
    Hero cards in the deployment bar again to activate Hero Abilities (Gauntlet/Tome/Arrow).
@@ -37,28 +36,28 @@ class PredeterminedAttacker:
 
         self.card_scanner = CardScanner()
 
-        # 4-Sided Base Perimeter Geometry (Outermost Green Border 0.0 - 1.0)
+        # 4-Sided Base Perimeter Geometry (Absolute Outermost Green Border 0.0 - 1.0, margin = 11%)
+        # Positioned strictly on the outermost edge of the screen grass to NEVER touch the red restricted area
         self.sides_geometry = {
             "TOP_LEFT": [
-                (0.15, 0.45), (0.20, 0.39), (0.25, 0.33), (0.31, 0.27),
-                (0.36, 0.21), (0.42, 0.15)
+                (0.12, 0.42), (0.17, 0.37), (0.22, 0.32), (0.27, 0.27),
+                (0.32, 0.22), (0.37, 0.17)
             ],
             "TOP_RIGHT": [
-                (0.58, 0.15), (0.63, 0.21), (0.69, 0.27), (0.74, 0.33),
-                (0.80, 0.39), (0.85, 0.45)
+                (0.63, 0.17), (0.68, 0.22), (0.73, 0.27), (0.78, 0.32),
+                (0.83, 0.37), (0.88, 0.42)
             ],
             "BOTTOM_RIGHT": [
-                (0.85, 0.55), (0.80, 0.61), (0.74, 0.67), (0.69, 0.73),
-                (0.63, 0.79), (0.58, 0.85)
+                (0.88, 0.58), (0.83, 0.63), (0.78, 0.68), (0.73, 0.73),
+                (0.68, 0.78), (0.63, 0.83)
             ],
             "BOTTOM_LEFT": [
-                (0.42, 0.85), (0.36, 0.79), (0.31, 0.73), (0.25, 0.67),
-                (0.20, 0.61), (0.15, 0.55)
+                (0.37, 0.83), (0.32, 0.78), (0.27, 0.73), (0.22, 0.68),
+                (0.17, 0.63), (0.12, 0.58)
             ],
         }
 
-        # Spell Geometry: Positioned "a bit ahead of troops toward center (0.50, 0.45) - not at back"
-        # Moves ~18% inward from the outermost border toward the core defenses
+        # Spell Geometry: Positioned ~18% inward toward center (0.50, 0.45) - ahead of troops, not at back
         self.spell_geometry = {
             "TOP_LEFT": [(0.25, 0.38), (0.32, 0.30), (0.38, 0.24)],
             "TOP_RIGHT": [(0.62, 0.24), (0.68, 0.30), (0.75, 0.38)],
@@ -79,7 +78,7 @@ class PredeterminedAttacker:
             self.controller.tap_fast(x, y)
         else:
             self.controller.tap(x, y)
-        time.sleep(0.05)
+        time.sleep(0.04)
 
     def tap_normalized(self, norm_x: float, norm_y: float) -> None:
         """Tap at normalized (0.0 to 1.0) screen coordinate."""
@@ -105,10 +104,49 @@ class PredeterminedAttacker:
         if hasattr(self.controller, "zoom_out"):
             self.controller.zoom_out()
 
+    def _deploy_card_until_greyed_out(self, card_name: str, army_map: Dict[str, Any], target_sides: List[str]) -> bool:
+        """
+        Taps the card icon to select it, then repeatedly taps along the outermost grass border
+        of target_sides UNTIL the card icon is greyed out (fully deployed / out of units).
+        """
+        info = self._get_card_info(army_map, card_name, default_count=24)
+        if not info:
+            return False
+
+        cx, cy, initial_count = info
+        print(f"  -> [DEPLOYING CARD] Selecting '{card_name}' at {(cx, cy)} (Initial count: {initial_count})")
+        self.tap_screen(cx, cy)
+        time.sleep(0.08)
+
+        tapped_total = 0
+        max_taps = max(40, initial_count + 15)  # Guard against infinite loop
+
+        while tapped_total < max_taps:
+            for side_name in target_sides:
+                points = self.sides_geometry[side_name]
+                pt = points[(tapped_total // max(1, len(target_sides))) % len(points)]
+                self.tap_normalized(pt[0], pt[1])
+                tapped_total += 1
+                time.sleep(0.04)
+
+            # Check if card has become greyed out (all units deployed)
+            if tapped_total % 4 == 0 or tapped_total >= initial_count:
+                frame = (
+                    self.controller.get_screenshot_fast()
+                    if self.use_fast_pipeline
+                    else self.controller.get_screenshot()
+                )
+                if self.card_scanner.is_card_greyed_out(frame, cx, cy):
+                    print(f"     [CARD GREYED OUT] '{card_name}' fully deployed after {tapped_total} taps!")
+                    return True
+
+        print(f"     [DEPLOY DONE] '{card_name}' finished after {tapped_total} taps.")
+        return True
+
     def auto_attack(self, troop_type: str = "VALKYRIE", side: str = "BOTTOM_LEFT", monitor_duration_sec: int = 20) -> Dict[str, Any]:
         """
         Automatically execute 4-Step Tactical Attack:
-        Troops first -> Heroes -> Inward Rage ahead of troops -> Activate Hero Abilities.
+        Troops first (until greyed out) -> Heroes -> Inward Rage ahead of troops -> Hero Abilities.
         """
         troop_type = troop_type.upper()
         print(f"\n=====================================================================")
@@ -139,7 +177,7 @@ class PredeterminedAttacker:
     def execute_surround_attack(self, troop_type: str, army_map: Dict[str, Any]) -> None:
         """
         4-Step Surround Attack (Valkyries / Sneaky Goblins):
-        - Step 1: Deploy ALL troops across all 4 sides along outermost edge.
+        - Step 1: Deploy ALL troops across all 4 sides along outermost edge UNTIL GREYED OUT.
         - Step 2: Deploy Heroes (1 per side).
         - Step 3: Deploy Rage Spells slightly INWARD ahead of troops.
         - Step 4: Wait ~7s and tap Hero cards to activate Hero Abilities.
@@ -148,22 +186,9 @@ class PredeterminedAttacker:
         self.zoom_out_base()
         time.sleep(0.3)
 
-        # STEP 1: Deploy ALL troops first across all 4 sides
-        print(f"[STEP 1: TROOPS FIRST] Deploying ALL '{troop_type}' across all 4 outermost edges...")
-        info = self._get_card_info(army_map, troop_type, default_count=28)
-        if info:
-            cx, cy, real_count = info
-            self.tap_screen(cx, cy)
-            time.sleep(0.08)
-
-            taps_per_side = max(4, (real_count // 4) + 1)
-            for side_name, points in self.sides_geometry.items():
-                print(f"  -> Dropping {taps_per_side} units on edge: {side_name}")
-                for i in range(taps_per_side):
-                    pt = points[i % len(points)]
-                    self.tap_normalized(pt[0], pt[1])
-                    time.sleep(0.04)
-
+        # STEP 1: Deploy ALL troops first across all 4 sides UNTIL GREYED OUT
+        print(f"[STEP 1: TROOPS FIRST] Deploying ALL '{troop_type}' across all 4 outermost edges until greyed out...")
+        self._deploy_card_until_greyed_out(troop_type, army_map, list(self.sides_geometry.keys()))
         time.sleep(0.4)
 
         # STEP 2: Deploy Heroes AFTER troops (1 Hero on EACH side)
@@ -197,7 +222,7 @@ class PredeterminedAttacker:
     def execute_line_sweep_attack(self, troop_type: str, side: str, army_map: Dict[str, Any]) -> None:
         """
         4-Step Line Sweep Attack (Dragons / E-Dragons):
-        - Step 1: Deploy ALL air troops along 1 outermost side.
+        - Step 1: Deploy ALL air troops along 1 outermost side UNTIL GREYED OUT.
         - Step 2: Deploy ALL Heroes alongside them on that exact same side.
         - Step 3: Deploy Rage Spells INWARD along the flight path ahead of dragons.
         - Step 4: Wait ~7s and tap Hero cards to activate Hero Abilities.
@@ -211,19 +236,9 @@ class PredeterminedAttacker:
         time.sleep(0.3)
         points = self.sides_geometry[side]
 
-        # STEP 1: Deploy ALL troops first along selected side
-        print(f"[STEP 1: TROOPS FIRST] Deploying ALL '{troop_type}' along outermost edge of side: {side}...")
-        info = self._get_card_info(army_map, troop_type, default_count=8)
-        if info:
-            cx, cy, real_count = info
-            self.tap_screen(cx, cy)
-            time.sleep(0.08)
-
-            for i in range(max(6, real_count)):
-                pt = points[i % len(points)]
-                self.tap_normalized(pt[0], pt[1])
-                time.sleep(0.06)
-
+        # STEP 1: Deploy ALL troops first along selected side UNTIL GREYED OUT
+        print(f"[STEP 1: TROOPS FIRST] Deploying ALL '{troop_type}' along outermost edge of side: {side} until greyed out...")
+        self._deploy_card_until_greyed_out(troop_type, army_map, [side])
         time.sleep(0.4)
 
         # STEP 2: Deploy ALL Heroes alongside troops on the SAME side
@@ -272,7 +287,6 @@ class PredeterminedAttacker:
                 if i >= count:
                     break
                 spell_pts = self.spell_geometry[side_name]
-                # Pick the center inward point for this side
                 inward_pt = spell_pts[len(spell_pts) // 2]
                 print(f"  -> Dropping Spell '{spell_name}' ahead on {side_name} at {inward_pt}")
                 self.tap_normalized(inward_pt[0], inward_pt[1])

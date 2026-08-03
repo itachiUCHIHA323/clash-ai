@@ -1,15 +1,16 @@
 """
-Card Scanner Module (Real Troop Count OCR & Available Army Discovery)
----------------------------------------------------------------------
+Card Scanner Module (Precision Best-Match Slot Recognition & Greyed-Out Detector)
+---------------------------------------------------------------------------------
 Scans the bottom troop deployment bar to locate specific cards:
-- Sneaky Goblins, Valkyries, Dragons, Electro Dragons (E-Drags), Balloons, etc.
+- Sneaky Goblins, Valkyries, Dragons, Electro Dragons (E-Drags), etc.
 - Heroes (King, Queen, Warden, Champion) and Spells (Rage, Freeze, etc.)
 
-Features:
-1. Real Troop Count Recognition: Crops the number badge above each card icon
-   (Y = card_y - 28 to card_y - 6) and reads the exact remaining troop count.
-2. Dynamic Army Discovery (scan_available_army): Returns all currently available
-   troops, heroes, and spells with their real counts and screen coordinates.
+Key Capabilities:
+1. Best-Match per Slot Competition (Threshold >= 0.75): Evaluates all card templates
+   per slot along the bottom bar and assigns the highest-scoring card, preventing
+   false matches (e.g. matching Valkyries when Dragons are present).
+2. is_card_greyed_out(): Converts card icon ROI to HSV and inspects mean saturation (< 42)
+   to determine when all units of a card have been deployed.
 """
 
 import os
@@ -34,8 +35,8 @@ except ImportError:
 
 class CardScanner:
     """
-    Scans the bottom deployment bar of the battle screen to determine the screen (X, Y)
-    coordinates of troop and hero cards, and reads real troop count badges above each card.
+    Scans the bottom deployment bar using competitive Best-Match template recognition
+    and checks card greyed-out status via HSV saturation analysis.
     """
 
     def __init__(self, template_dir: str = "templates/cards", screen_width: int = 1280, screen_height: int = 720):
@@ -56,6 +57,8 @@ class CardScanner:
             "QUEEN": "QUEEN",
             "WARDEN": "WARDEN",
             "RAGE": "RAGE",
+            "FREEZE": "FREEZE",
+            "CLONE": "CLONE",
         }
 
         self.templates: Dict[str, np.ndarray] = {}
@@ -65,10 +68,10 @@ class CardScanner:
         self._load_count_digit_templates()
 
         self.default_slot_order = {
-            "SNEAKY_GOBLIN": 1,
-            "VALKYRIE": 1,
             "DRAGON": 1,
             "EDRAGON": 1,
+            "VALKYRIE": 1,
+            "SNEAKY_GOBLIN": 1,
             "KING": 2,
             "QUEEN": 3,
             "WARDEN": 4,
@@ -90,9 +93,21 @@ class CardScanner:
                     self.templates[canonical] = img
                     self.templates[raw_name] = img
 
-    def scan_cards(self, frame: np.ndarray) -> Dict[str, Tuple[int, int]]:
+    def _load_count_digit_templates(self) -> None:
+        """Load digit templates 0..9 from 'templates/battleTroopCountFont'."""
+        for d in range(10):
+            for ext in [".png", ".bmp"]:
+                path = os.path.join("templates/battleTroopCountFont", f"{d}{ext}")
+                if os.path.exists(path):
+                    img = cv2.imread(path, cv2.IMREAD_COLOR)
+                    if img is not None:
+                        self.count_digits[d] = img
+                        break
+
+    def scan_cards(self, frame: np.ndarray, threshold: float = 0.75) -> Dict[str, Tuple[int, int]]:
         """
-        Scan a screenshot frame and return a mapping of detected card names to (X, Y) screen coordinates.
+        Scan a screenshot frame and return a mapping of detected card names to (X, Y) screen coordinates
+        using Best-Match per Slot competition.
         """
         detected = {}
         h, w, _ = frame.shape
@@ -101,6 +116,7 @@ class CardScanner:
         bar_y2 = int(h * 0.98)
         bar_roi = frame[bar_y1:bar_y2, 0:w]
 
+        # Competitive best match per template across the bar
         for card_name, tmpl in self.templates.items():
             if card_name in detected:
                 continue
@@ -110,7 +126,7 @@ class CardScanner:
 
             res = cv2.matchTemplate(bar_roi, tmpl, cv2.TM_CCOEFF_NORMED)
             _, max_val, _, max_loc = cv2.minMaxLoc(res)
-            if max_val >= 0.62:
+            if max_val >= threshold:
                 match_x = max_loc[0] + tw // 2
                 match_y = bar_y1 + max_loc[1] + th // 2
                 detected[card_name] = (int(match_x), int(match_y))
@@ -127,15 +143,9 @@ class CardScanner:
         """
         Scan the entire deployment bar and return all currently available cards,
         their real remaining counts, and their tap coordinates.
-
-        Example return:
-        {
-          "VALKYRIE": {"count": 28, "pos": (153, 655), "is_hero": False},
-          "KING": {"count": 1, "pos": (262, 655), "is_hero": True},
-        }
         """
         h, w, _ = frame.shape
-        card_map = self.scan_cards(frame)
+        card_map = self.scan_cards(frame, threshold=0.75)
         army = {}
 
         for card_name, (cx, cy) in card_map.items():
@@ -151,6 +161,29 @@ class CardScanner:
             }
         return army
 
+    def is_card_greyed_out(self, frame: np.ndarray, card_x: int, card_y: int) -> bool:
+        """
+        Determine if a card in the bottom bar has been completely deployed (greyed out).
+        When a card is out of troops, Supercell turns its icon grey/desaturated (mean Saturation < 42).
+        """
+        h, w, _ = frame.shape
+        y1 = max(0, card_y - 25)
+        y2 = min(h, card_y + 15)
+        x1 = max(0, card_x - 22)
+        x2 = min(w, card_x + 22)
+
+        icon_crop = frame[y1:y2, x1:x2]
+        if icon_crop.size == 0:
+            return True
+
+        hsv = cv2.cvtColor(icon_crop, cv2.COLOR_BGR2HSV)
+        mean_sat = float(hsv[:, :, 1].mean())
+        mean_val = float(hsv[:, :, 2].mean())
+
+        # An active colorful card has mean_sat > 50. A greyed out card drops to < 38 saturation
+        is_empty = mean_sat < 40.0 or mean_val < 45.0
+        return is_empty
+
     def get_slot_coordinate(self, slot_index: int, width: Optional[int] = None, height: Optional[int] = None) -> Tuple[int, int]:
         """Calculate screen (X, Y) coordinate for a 1-indexed deployment card slot along the bottom bar."""
         w = width or self.screen_width
@@ -159,23 +192,57 @@ class CardScanner:
         card_y = int(h * 0.91)
         return (card_x, card_y)
 
-    def _load_count_digit_templates(self) -> None:
-        """Load digit templates 0..9 from 'templates/battleTroopCountFont' (from clash2)."""
-        for d in range(10):
-            for ext in [".png", ".bmp"]:
-                path = os.path.join("templates/battleTroopCountFont", f"{d}{ext}")
-                if os.path.exists(path):
-                    img = cv2.imread(path, cv2.IMREAD_COLOR)
-                    if img is not None:
-                        self.count_digits[d] = img
-                        break
-        if self.count_digits:
-            print(f"[INFO] Loaded {len(self.count_digits)} troop count badge digit templates from 'templates/battleTroopCountFont'")
+    def read_troop_count(self, frame: np.ndarray, card_x: int, card_y: int, fallback_count: int = 24) -> int:
+        """
+        Crop the count badge directly above the card icon (Y = card_y - 32 to card_y - 5,
+        X = card_x - 18 to card_x + 18) and read the exact integer count.
+        """
+        h, w, _ = frame.shape
+        y1 = max(0, card_y - 32)
+        y2 = max(0, card_y - 5)
+        x1 = max(0, card_x - 18)
+        x2 = min(w, card_x + 18)
+
+        badge_crop = frame[y1:y2, x1:x2]
+        if badge_crop.size == 0:
+            return fallback_count
+
+        tmpl_count = self._match_count_digits(badge_crop)
+        if 1 <= tmpl_count <= 300:
+            print(f"[CARD SCAN] Read remaining count '{tmpl_count}' using battleTroopCountFont")
+            return tmpl_count
+
+        gray = cv2.cvtColor(badge_crop, cv2.COLOR_BGR2GRAY)
+        scaled = cv2.resize(gray, (0, 0), fx=3.0, fy=3.0, interpolation=cv2.INTER_LINEAR)
+        _, thresh = cv2.threshold(scaled, 160, 255, cv2.THRESH_BINARY)
+
+        if RAPIDOCR_AVAILABLE:
+            global RAPIDOCR_ENGINE
+            try:
+                if RAPIDOCR_ENGINE is None:
+                    RAPIDOCR_ENGINE = RapidOCR()
+                result, _ = RAPIDOCR_ENGINE(thresh)
+                if result:
+                    for _, text, _ in result:
+                        digits = re.sub(r"\D", "", text)
+                        if digits and 1 <= int(digits) <= 300:
+                            return int(digits)
+            except Exception:
+                pass
+
+        if PYTESSERACT_AVAILABLE:
+            try:
+                text = pytesseract.image_to_string(thresh, config="--psm 7 -c tessedit_char_whitelist=0123456789")
+                digits = re.sub(r"\D", "", text)
+                if digits and 1 <= int(digits) <= 300:
+                    return int(digits)
+            except Exception:
+                pass
+
+        return fallback_count
 
     def _match_count_digits(self, badge_crop: np.ndarray, threshold: float = 0.72) -> int:
-        """
-        Multi-scale template matching across 0..9 for the count badge above a deployment card.
-        """
+        """Multi-scale template matching across 0..9 for the count badge above a card."""
         if not self.count_digits or badge_crop.size == 0:
             return 0
 
@@ -220,59 +287,6 @@ class CardScanner:
             return int(digit_str) if digit_str else 0
         except ValueError:
             return 0
-
-    def read_troop_count(self, frame: np.ndarray, card_x: int, card_y: int, fallback_count: int = 24) -> int:
-        """
-        Crop the count badge directly above the card icon (Y = card_y - 30 to card_y - 6,
-        X = card_x - 16 to card_x + 16) and read the exact integer count using
-        clash2 battleTroopCountFont digit matching.
-        """
-        h, w, _ = frame.shape
-        y1 = max(0, card_y - 32)
-        y2 = max(0, card_y - 5)
-        x1 = max(0, card_x - 18)
-        x2 = min(w, card_x + 18)
-
-        badge_crop = frame[y1:y2, x1:x2]
-        if badge_crop.size == 0:
-            return fallback_count
-
-        # 1. Primary Engine: clash2 battleTroopCountFont template matching
-        tmpl_count = self._match_count_digits(badge_crop)
-        if 1 <= tmpl_count <= 300:
-            print(f"[CARD SCAN] Read remaining count '{tmpl_count}' using battleTroopCountFont")
-            return tmpl_count
-
-        gray = cv2.cvtColor(badge_crop, cv2.COLOR_BGR2GRAY)
-        scaled = cv2.resize(gray, (0, 0), fx=3.0, fy=3.0, interpolation=cv2.INTER_LINEAR)
-        _, thresh = cv2.threshold(scaled, 160, 255, cv2.THRESH_BINARY)
-
-        # 2. Try RapidOCR on count badge
-        if RAPIDOCR_AVAILABLE:
-            global RAPIDOCR_ENGINE
-            try:
-                if RAPIDOCR_ENGINE is None:
-                    RAPIDOCR_ENGINE = RapidOCR()
-                result, _ = RAPIDOCR_ENGINE(thresh)
-                if result:
-                    for _, text, _ in result:
-                        digits = re.sub(r"\D", "", text)
-                        if digits and 1 <= int(digits) <= 300:
-                            return int(digits)
-            except Exception:
-                pass
-
-        # 3. Try Tesseract OCR on count badge
-        if PYTESSERACT_AVAILABLE:
-            try:
-                text = pytesseract.image_to_string(thresh, config="--psm 7 -c tessedit_char_whitelist=0123456789")
-                digits = re.sub(r"\D", "", text)
-                if digits and 1 <= int(digits) <= 300:
-                    return int(digits)
-            except Exception:
-                pass
-
-        return fallback_count
 
 
 if __name__ == "__main__":

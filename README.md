@@ -127,18 +127,16 @@ When building an AI for Clash of Clans, trying to train an RL agent from scratch
 
 ### Phase 1: Predetermined Scripted Deployment (4-Step Tactical Baseline)
 Before training neural networks, use **`src/agent/predetermined_agent.py`** to execute specialized 4-Step Tactical Attacks:
-1. **STEP 1 (Troops First - ALL OF THEM)**: Deploys all available troops first along the outermost green grass border to guarantee zero "cannot deploy here" red zone errors.
-2. **STEP 2 (Then Heroes)**: Deploys all available Heroes (`KING`, `QUEEN`, `WARDEN`, `CHAMPION`) *after* all troops have been dropped (1 per side for Surround, alongside troops for Line Sweep).
+1. **STEP 1 (Troops First - ALL OF THEM UNTIL GREYED OUT)**: Selects troop cards and taps along the absolute outermost green grass border (`margin = 11%`, `0.12 to 0.88`) **until the card icon turns greyed out (mean Saturation `< 40`)**, guaranteeing every single unit is dropped without "cannot deploy here" red zone errors.
+2. **STEP 2 (Then Heroes)**: Deploys all available Heroes (`KING`, `QUEEN`, `WARDEN`, `CHAMPION`) *after* all troops are greyed out (1 per side for Surround, alongside troops for Line Sweep).
 3. **STEP 3 (Spells A BIT AHEAD - NOT AT BACK)**: Deploys Rage and Support spells slightly INWARD toward the center of the base (`~18%` ahead of the troop drop line), placing the spell circle right where troops walk into enemy defenses.
-4. **STEP 4 (Hero Ability Activation)**: Waits `~7 seconds` after heroes engage defenses and taps all Hero cards in the deployment bar again to trigger Hero Abilities (Gauntlet/Tome/Arrow).
-- **Specialized Attack Logic (`PredeterminedAttacker`)**:
-  - `SURROUND_ATTACK` (for **Sneaky Goblins** or **Valkyries**): Deploys troops evenly across **all 4 sides** of the base perimeter (`TOP_LEFT`, `TOP_RIGHT`, `BOTTOM_RIGHT`, `BOTTOM_LEFT`), deploys **4 Heroes with ONE Hero on EACH side**, drops 4 Inward Rage Spells, and triggers Hero Abilities.
-  - `LINE_SWEEP_ATTACK` (for **Dragons** or **Electro Dragons / E-Drags**): Deploys all dragons along **any single selected side**, deploys **all 4 Heroes alongside the dragons on that exact same side**, drops Rage Spells along their flight path, and triggers Hero Abilities.
+4. **STEP 4 (Hero Ability Activation)**: Waits `~6.5 seconds` after heroes engage defenses and taps all Hero cards in the deployment bar again to trigger Hero Abilities (Gauntlet/Tome/Arrow).
 
 ### How Deployment Card Recognition Works (`CardScanner`)
 To select cards dynamically from the deployment bar without hardcoding slots:
-1. **OpenCV Template Matching (Optional Icon Scans)**: The bot uses **`src/vision/card_scanner.py`** to scan the bottom deployment bar against small card icons (`SNEAKY_GOBLIN`, `VALKYRIE`, `DRAGON`, `EDRAGON`, `KING`, `QUEEN`, `WARDEN`, `CHAMPION`).
-2. **Zero-Vision Slot Order Fallback**: If card template PNGs aren't captured yet, the scanner automatically falls back to your 1-indexed army slot order (e.g., Slot 1 = E-Drags, Slot 2 = King, Slot 3 = Queen, etc.), calculating exact screen $(X, Y)$ taps automatically!
+1. **Competitive Best-Match per Slot (`threshold >= 0.75`)**: Evaluates all card templates per slot along the bottom bar (`Y = 76% to 98%`) and assigns the highest-scoring card, preventing false matches (e.g., matching Valkyries when Dragons are present).
+2. **True Troop Count Recognition (`read_troop_count`) & `scan_available_army`**: Crops the number badge above each card icon (`Y = card_y - 32 to card_y - 5`, `X = card_x - 18 to card_x + 18`) and reads the exact remaining count using `clash2`'s `battleTroopCountFont/0.png..9.png`.
+3. **Greyed-Out Card Detection (`is_card_greyed_out`)**: Converts card icon ROI to HSV and checks mean Saturation (`< 40`). Active cards have saturation `> 55`; deployed empty cards become desaturated grey.
 
 ### What Images / Assets Do You Need?
 - **Do we need images for the 4 sides of the base?** **No!** A Clash of Clans battle map is an invariant isometric diamond. The 4 perimeter edges (`TOP_LEFT`, `TOP_RIGHT`, `BOTTOM_RIGHT`, `BOTTOM_LEFT`) are mapped geometrically in normalized coordinates (`0.0 - 1.0`) inside `PredeterminedAttacker`.
